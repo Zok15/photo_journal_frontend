@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
+import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 
 const series = ref([])
 const loading = ref(true)
@@ -16,15 +17,15 @@ const createFilesInput = ref(null)
 const creating = ref(false)
 const createError = ref('')
 const createWarnings = ref([])
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
 function onCreateFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = files.find((file) => file.size > MAX_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
+  const invalid = files.find((file) => file.size > MAX_RAW_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
 
   if (invalid) {
-    createError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 10MB.`
+    createError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
     createFiles.value = []
     event.target.value = ''
     return
@@ -70,6 +71,18 @@ async function createSeries() {
   creating.value = true
 
   try {
+    const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(createFiles.value, {
+      maxBytes: 2 * 1024 * 1024,
+      maxDimension: 2560,
+    })
+
+    createWarnings.value = warnings
+
+    if (!optimizedFiles.length) {
+      createError.value = 'No files left after optimization.'
+      return
+    }
+
     const formData = new FormData()
     formData.append('title', createTitle.value)
 
@@ -77,7 +90,7 @@ async function createSeries() {
       formData.append('description', createDescription.value)
     }
 
-    for (const file of createFiles.value) {
+    for (const file of optimizedFiles) {
       formData.append('photos[]', file)
     }
 
@@ -87,7 +100,7 @@ async function createSeries() {
       },
     })
 
-    createWarnings.value = data.photos_failed || []
+    createWarnings.value = [...warnings, ...(data.photos_failed || [])]
     createTitle.value = ''
     createDescription.value = ''
     createFiles.value = []
@@ -160,6 +173,7 @@ onMounted(() => {
             @change="onCreateFilesChanged"
           />
         </label>
+        <small>Images are optimized for web before upload (target: up to 2MB per file).</small>
         <small v-if="createFiles.length">Selected: {{ createFiles.length }} file(s)</small>
 
         <p v-if="createError" class="error">{{ createError }}</p>

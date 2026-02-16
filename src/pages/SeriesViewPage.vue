@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../lib/api'
+import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 
 const route = useRoute()
 
@@ -14,15 +15,15 @@ const uploadInput = ref(null)
 const uploading = ref(false)
 const uploadError = ref('')
 const uploadWarnings = ref([])
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
 function onUploadFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = files.find((file) => file.size > MAX_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
+  const invalid = files.find((file) => file.size > MAX_RAW_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
 
   if (invalid) {
-    uploadError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 10MB.`
+    uploadError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
     uploadFiles.value = []
     event.target.value = ''
     return
@@ -63,9 +64,21 @@ async function uploadPhotos() {
   uploading.value = true
 
   try {
+    const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(uploadFiles.value, {
+      maxBytes: 2 * 1024 * 1024,
+      maxDimension: 2560,
+    })
+
+    uploadWarnings.value = warnings
+
+    if (!optimizedFiles.length) {
+      uploadError.value = 'No files left after optimization.'
+      return
+    }
+
     const formData = new FormData()
 
-    for (const file of uploadFiles.value) {
+    for (const file of optimizedFiles) {
       formData.append('photos[]', file)
     }
 
@@ -75,7 +88,7 @@ async function uploadPhotos() {
       },
     })
 
-    uploadWarnings.value = data.photos_failed || []
+    uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
     uploadFiles.value = []
 
     if (uploadInput.value) {
@@ -138,6 +151,7 @@ watch(() => route.params.id, loadSeries)
             multiple
             @change="onUploadFilesChanged"
           />
+          <small>Images are optimized for web before upload (target: up to 2MB per file).</small>
           <small v-if="uploadFiles.length">Selected: {{ uploadFiles.length }} file(s)</small>
 
           <p v-if="uploadError" class="error">{{ uploadError }}</p>
