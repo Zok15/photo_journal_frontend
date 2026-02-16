@@ -23,7 +23,10 @@ async function logout() {
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <strong>Photo Journal</strong>
+      <div class="brand">
+        <img src="/logo.png" alt="Bird logo" class="brand-logo" />
+        <strong>Photo Journal</strong>
+      </div>
 
       <nav class="app-nav">
         <RouterLink v-if="signedIn" to="/series">Series</RouterLink>
@@ -51,6 +54,18 @@ async function logout() {
   padding: 12px 22px;
   border-bottom: 1px solid #dadfd8;
   background: #f3f4f1;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  display: block;
 }
 
 .app-nav {
