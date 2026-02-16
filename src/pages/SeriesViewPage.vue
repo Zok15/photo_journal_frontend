@@ -15,6 +15,13 @@ const uploadInput = ref(null)
 const uploading = ref(false)
 const uploadError = ref('')
 const uploadWarnings = ref([])
+const showUploadForm = ref(false)
+
+const isEditingSeries = ref(false)
+const editTitle = ref('')
+const editDescription = ref('')
+const editError = ref('')
+const savingSeries = ref(false)
 
 const selectedPhoto = ref(null)
 const zoomPercent = ref(100)
@@ -22,6 +29,12 @@ const previewNaturalWidth = ref(0)
 const previewNaturalHeight = ref(0)
 const viewportWidth = ref(window.innerWidth)
 const viewportHeight = ref(window.innerHeight)
+const previewStageRef = ref(null)
+const isDraggingPreview = ref(false)
+const dragStartX = ref(0)
+const dragStartY = ref(0)
+const dragScrollLeft = ref(0)
+const dragScrollTop = ref(0)
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
@@ -112,6 +125,45 @@ function formatValidationError(err) {
   return `${fallback} ${lines.join(' ')}`
 }
 
+function openEditSeries() {
+  if (!item.value) return
+
+  isEditingSeries.value = true
+  editError.value = ''
+  editTitle.value = item.value.title || ''
+  editDescription.value = item.value.description || ''
+}
+
+function cancelEditSeries() {
+  isEditingSeries.value = false
+  editError.value = ''
+}
+
+async function saveSeries() {
+  if (!item.value) return
+  if (!editTitle.value.trim()) {
+    editError.value = 'Название обязательно.'
+    return
+  }
+
+  savingSeries.value = true
+  editError.value = ''
+
+  try {
+    const { data } = await api.patch(`/series/${item.value.id}`, {
+      title: editTitle.value,
+      description: editDescription.value || null,
+    })
+
+    item.value = data.data
+    isEditingSeries.value = false
+  } catch (e) {
+    editError.value = formatValidationError(e)
+  } finally {
+    savingSeries.value = false
+  }
+}
+
 function openPreview(photo) {
   selectedPhoto.value = photo
   zoomPercent.value = 100
@@ -174,6 +226,40 @@ function onKeydown(event) {
   }
 }
 
+function onPreviewMouseDown(event) {
+  const stage = previewStageRef.value
+  if (!stage) {
+    return
+  }
+
+  isDraggingPreview.value = true
+  dragStartX.value = event.clientX
+  dragStartY.value = event.clientY
+  dragScrollLeft.value = stage.scrollLeft
+  dragScrollTop.value = stage.scrollTop
+}
+
+function onPreviewMouseMove(event) {
+  if (!isDraggingPreview.value) {
+    return
+  }
+
+  const stage = previewStageRef.value
+  if (!stage) {
+    return
+  }
+
+  const dx = event.clientX - dragStartX.value
+  const dy = event.clientY - dragStartY.value
+
+  stage.scrollLeft = dragScrollLeft.value - dx
+  stage.scrollTop = dragScrollTop.value - dy
+}
+
+function stopPreviewDrag() {
+  isDraggingPreview.value = false
+}
+
 async function uploadPhotos() {
   uploadError.value = ''
   uploadWarnings.value = []
@@ -212,6 +298,7 @@ async function uploadPhotos() {
 
     uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
     uploadFiles.value = []
+    showUploadForm.value = false
 
     if (uploadInput.value) {
       uploadInput.value.value = ''
@@ -222,6 +309,53 @@ async function uploadPhotos() {
     uploadError.value = formatValidationError(e)
   } finally {
     uploading.value = false
+  }
+}
+
+async function deletePhoto(photo) {
+  if (!item.value || !photo) return
+
+  const confirmed = window.confirm(`Удалить фото "${photo.original_name || photo.id}"?`)
+  if (!confirmed) return
+
+  try {
+    await api.delete(`/series/${item.value.id}/photos/${photo.id}`)
+
+    if (selectedPhoto.value?.id === photo.id) {
+      closePreview()
+    }
+
+    await loadSeries()
+  } catch (e) {
+    error.value = e?.response?.data?.message || 'Не удалось удалить фото.'
+  }
+}
+
+async function renamePhoto(photo) {
+  if (!item.value || !photo) return
+
+  const currentName = String(photo.original_name || '')
+  const dotIndex = currentName.lastIndexOf('.')
+  const currentExtension = dotIndex > 0 ? currentName.slice(dotIndex + 1) : 'jpg'
+  const currentBaseName = dotIndex > 0 ? currentName.slice(0, dotIndex) : currentName || String(photo.id)
+
+  const nextName = window.prompt(
+    `Новое название файла (расширение .${currentExtension} менять нельзя)`,
+    currentBaseName
+  )
+  if (nextName === null) return
+
+  const normalized = nextName.trim()
+  if (!normalized) return
+
+  try {
+    await api.patch(`/series/${item.value.id}/photos/${photo.id}`, {
+      original_name: normalized,
+    })
+
+    await loadSeries()
+  } catch (e) {
+    error.value = e?.response?.data?.message || 'Не удалось переименовать фото.'
   }
 }
 
@@ -276,11 +410,19 @@ watch(() => route.params.id, () => {
             <h1>{{ item.title }}</h1>
             <p class="series-meta">{{ formatDate(item.created_at) }} · {{ item.photos_count }} фото</p>
           </div>
+          <div class="series-actions">
+            <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
+              {{ showUploadForm ? 'Скрыть форму' : 'Добавить фото' }}
+            </button>
+            <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" title="Редактировать">
+              ✎
+            </button>
+          </div>
         </header>
 
         <p class="series-description">{{ item.description || 'Описание пока не добавлено.' }}</p>
 
-        <section class="upload-panel">
+        <section v-if="showUploadForm" class="upload-panel">
           <h2>Добавить фото</h2>
 
           <form class="upload-form" @submit.prevent="uploadPhotos">
@@ -310,12 +452,41 @@ watch(() => route.params.id, () => {
           </form>
         </section>
 
+        <section v-if="isEditingSeries" class="upload-panel">
+          <h2>Редактировать серию</h2>
+          <form class="upload-form" @submit.prevent="saveSeries">
+            <label>
+              Название
+              <input v-model="editTitle" type="text" maxlength="255" required />
+            </label>
+            <label>
+              Описание
+              <textarea v-model="editDescription" rows="3"></textarea>
+            </label>
+
+            <p v-if="editError" class="error">{{ editError }}</p>
+
+            <div class="inline-actions">
+              <button type="submit" class="primary-btn" :disabled="savingSeries">
+                {{ savingSeries ? 'Сохраняем...' : 'Сохранить' }}
+              </button>
+              <button type="button" class="ghost-btn" @click="cancelEditSeries">Отмена</button>
+            </div>
+          </form>
+        </section>
+
         <section class="photo-grid" v-if="photoList.length">
           <article v-for="photo in photoList" :key="photo.id" class="photo-card" @click="openPreview(photo)">
             <img class="thumb" :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
             <div class="thumb-meta">
               <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
-              <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
+              <div class="thumb-bottom">
+                <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
+                <div class="thumb-actions">
+                  <button type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(photo)">✎</button>
+                  <button type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(photo)">🗑</button>
+                </div>
+              </div>
             </div>
           </article>
         </section>
@@ -335,7 +506,15 @@ watch(() => route.params.id, () => {
           </div>
         </div>
 
-        <div class="preview-stage">
+        <div
+          ref="previewStageRef"
+          class="preview-stage"
+          :class="{ 'preview-stage--dragging': isDraggingPreview }"
+          @mousedown="onPreviewMouseDown"
+          @mousemove="onPreviewMouseMove"
+          @mouseup="stopPreviewDrag"
+          @mouseleave="stopPreviewDrag"
+        >
           <div class="preview-inner">
             <img
               class="preview-image"
@@ -399,6 +578,19 @@ watch(() => route.params.id, () => {
   letter-spacing: -0.03em;
 }
 
+.series-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.series-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .series-meta {
   margin: 8px 0 0;
   color: var(--muted);
@@ -425,6 +617,22 @@ watch(() => route.params.id, () => {
 
 .upload-form {
   display: grid;
+  gap: 8px;
+}
+
+.upload-form input,
+.upload-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.inline-actions {
+  display: flex;
   gap: 8px;
 }
 
@@ -463,6 +671,34 @@ watch(() => route.params.id, () => {
 
 .thumb-meta span {
   color: var(--muted);
+}
+
+.thumb-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.thumb-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.icon-ghost-btn {
+  border: 1px solid #c9d3c8;
+  border-radius: 7px;
+  background: #eef2ec;
+  color: #4a5b4f;
+  cursor: pointer;
+  min-width: 30px;
+  height: 28px;
+  line-height: 1;
+  padding: 0;
+}
+
+.icon-ghost-btn:hover {
+  background: #e3e9e1;
 }
 
 .preview-overlay {
@@ -539,6 +775,12 @@ watch(() => route.params.id, () => {
   height: 100%;
   overflow: auto;
   padding: 16px;
+  cursor: grab;
+  user-select: none;
+}
+
+.preview-stage--dragging {
+  cursor: grabbing;
 }
 
 .preview-inner {
@@ -556,6 +798,7 @@ watch(() => route.params.id, () => {
   max-width: min(88vw, 1400px);
   max-height: calc(100vh - 72px);
   object-fit: contain;
+  pointer-events: none;
 }
 
 .primary-btn {
@@ -576,6 +819,26 @@ watch(() => route.params.id, () => {
 .primary-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.ghost-btn {
+  border: 1px solid #c8d2c8;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: #edf1ec;
+  color: var(--text);
+}
+
+.ghost-btn:hover {
+  background: #e3eae2;
+}
+
+.icon-btn {
+  min-width: 38px;
+  padding: 8px 0;
+  font-size: 16px;
 }
 
 .error {
@@ -616,6 +879,11 @@ watch(() => route.params.id, () => {
 
   .series-header h1 {
     font-size: 32px;
+  }
+
+  .series-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .series-description {
