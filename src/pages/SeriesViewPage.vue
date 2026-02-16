@@ -30,6 +30,11 @@ const showDeletePhotoModal = ref(false)
 const photoToDelete = ref(null)
 const deletingPhoto = ref(false)
 const deletePhotoError = ref('')
+const draggingPhotoId = ref(null)
+const dragOverPhotoId = ref(null)
+const reorderingPhotos = ref(false)
+const photoOrderError = ref('')
+const suppressPreviewOpen = ref(false)
 
 const selectedPhoto = ref(null)
 const zoomPercent = ref(100)
@@ -173,6 +178,11 @@ async function saveSeries() {
 }
 
 function openPreview(photo) {
+  if (reorderingPhotos.value || draggingPhotoId.value !== null || suppressPreviewOpen.value) {
+    suppressPreviewOpen.value = false
+    return
+  }
+
   selectedPhoto.value = photo
   zoomPercent.value = 100
   previewNaturalWidth.value = 0
@@ -276,6 +286,82 @@ function onPreviewMouseMove(event) {
 
 function stopPreviewDrag() {
   isDraggingPreview.value = false
+}
+
+function onPhotoDragStart(photo, event) {
+  if (reorderingPhotos.value) {
+    return
+  }
+
+  draggingPhotoId.value = photo.id
+  dragOverPhotoId.value = null
+  photoOrderError.value = ''
+
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(photo.id))
+  }
+}
+
+function onPhotoDragEnter(photo) {
+  if (draggingPhotoId.value === null || draggingPhotoId.value === photo.id) {
+    return
+  }
+
+  dragOverPhotoId.value = photo.id
+}
+
+function onPhotoDragEnd() {
+  draggingPhotoId.value = null
+  dragOverPhotoId.value = null
+}
+
+async function onPhotoDrop(targetPhoto) {
+  if (!item.value || draggingPhotoId.value === null || draggingPhotoId.value === targetPhoto.id) {
+    onPhotoDragEnd()
+    return
+  }
+
+  const previousOrder = [...photoList.value]
+  const fromIndex = previousOrder.findIndex((photo) => photo.id === draggingPhotoId.value)
+  const toIndex = previousOrder.findIndex((photo) => photo.id === targetPhoto.id)
+
+  if (fromIndex < 0 || toIndex < 0) {
+    onPhotoDragEnd()
+    return
+  }
+
+  const nextOrder = [...previousOrder]
+  const [moved] = nextOrder.splice(fromIndex, 1)
+  nextOrder.splice(toIndex, 0, moved)
+
+  item.value = {
+    ...item.value,
+    photos: nextOrder,
+  }
+
+  suppressPreviewOpen.value = true
+  setTimeout(() => {
+    suppressPreviewOpen.value = false
+  }, 0)
+
+  reorderingPhotos.value = true
+  photoOrderError.value = ''
+
+  try {
+    await api.patch(`/series/${item.value.id}/photos/reorder`, {
+      photo_ids: nextOrder.map((photo) => photo.id),
+    })
+  } catch (e) {
+    item.value = {
+      ...item.value,
+      photos: previousOrder,
+    }
+    photoOrderError.value = e?.response?.data?.message || 'Не удалось сохранить порядок фото.'
+  } finally {
+    reorderingPhotos.value = false
+    onPhotoDragEnd()
+  }
 }
 
 function openDeleteSeriesModal() {
@@ -552,8 +638,25 @@ watch(() => route.params.id, () => {
           </form>
         </section>
 
+        <p v-if="photoOrderError" class="error">{{ photoOrderError }}</p>
+
         <section class="photo-grid" v-if="photoList.length">
-          <article v-for="photo in photoList" :key="photo.id" class="photo-card" @click="openPreview(photo)">
+          <article
+            v-for="photo in photoList"
+            :key="photo.id"
+            class="photo-card"
+            :class="{
+              'photo-card--dragging': draggingPhotoId === photo.id,
+              'photo-card--drag-over': dragOverPhotoId === photo.id,
+            }"
+            draggable="true"
+            @dragstart="onPhotoDragStart(photo, $event)"
+            @dragenter.prevent="onPhotoDragEnter(photo)"
+            @dragover.prevent
+            @drop.prevent="onPhotoDrop(photo)"
+            @dragend="onPhotoDragEnd"
+            @click="openPreview(photo)"
+          >
             <img class="thumb" :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
             <div class="thumb-meta">
               <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
@@ -771,7 +874,21 @@ watch(() => route.params.id, () => {
   border-radius: 10px;
   overflow: hidden;
   background: #fcfdfb;
-  cursor: zoom-in;
+  cursor: grab;
+  user-select: none;
+}
+
+.photo-card:active {
+  cursor: grabbing;
+}
+
+.photo-card--dragging {
+  opacity: 0.55;
+}
+
+.photo-card--drag-over {
+  border-color: #87ad98;
+  box-shadow: inset 0 0 0 2px rgba(79, 131, 102, 0.18);
 }
 
 .thumb {
