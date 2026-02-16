@@ -393,6 +393,11 @@ function shiftCalendarMonth(offset) {
 }
 
 function pickCalendarDate(iso) {
+  if (selectedCalendarDate.value === iso) {
+    selectedCalendarDate.value = ''
+    return
+  }
+
   selectedCalendarDate.value = iso
   dateFrom.value = ''
   dateTo.value = ''
@@ -1134,6 +1139,7 @@ onBeforeUnmount(() => {
 
 .content-panel {
   padding: 20px;
+  min-width: 0;
 }
 
 .create-card {
@@ -1167,10 +1173,14 @@ onBeforeUnmount(() => {
 
 .search-row {
   margin-bottom: 14px;
+  width: 100%;
+  min-width: 0;
 }
 
 .search-row input {
+  display: block;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1189,6 +1199,8 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   background: #fbfcfa;
   padding: 14px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .series-card-header {
@@ -1241,6 +1253,8 @@ onBeforeUnmount(() => {
 .preview-grid {
   margin-top: 10px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   gap: 8px;
 }
@@ -1250,16 +1264,20 @@ onBeforeUnmount(() => {
   flex-wrap: nowrap;
   gap: 0;
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .preview-tile {
   flex: 0 0 auto;
+  box-sizing: border-box;
   overflow: hidden;
 }
 
 .preview-tile-image {
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   display: block;
   border-radius: 8px;
   border: 1px solid rgba(125, 134, 128, 0.25);
