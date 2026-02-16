@@ -29,9 +29,10 @@ async function logout() {
       </div>
 
       <nav class="app-nav">
-        <RouterLink v-if="signedIn" to="/series">Series</RouterLink>
-        <RouterLink v-if="!signedIn" to="/login">Login</RouterLink>
-        <button v-if="signedIn" type="button" @click="logout">Logout</button>
+        <RouterLink v-if="signedIn" to="/series" class="nav-link">Серии</RouterLink>
+        <RouterLink v-if="signedIn" to="/profile" class="nav-link">Профиль</RouterLink>
+        <RouterLink v-if="!signedIn" to="/login" class="nav-link">Вход</RouterLink>
+        <button v-if="signedIn" type="button" class="logout-btn" @click="logout">Выход</button>
       </nav>
     </header>
 
@@ -48,12 +49,14 @@ async function logout() {
 }
 
 .app-header {
+  --line: #dde0d9;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 22px;
-  border-bottom: 1px solid #dadfd8;
-  background: #f3f4f1;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #f4f5f2;
+  box-shadow: 0 6px 18px rgba(79, 86, 80, 0.08);
 }
 
 .brand {
@@ -70,16 +73,49 @@ async function logout() {
 
 .app-nav {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
 }
 
-.app-nav button {
+.nav-link,
+.logout-btn {
+  text-decoration: none;
+  color: #35403a;
+  background: #edf1ec;
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  font-weight: 700;
+  padding: 8px 12px;
+  line-height: 1;
+}
+
+.nav-link.router-link-active {
+  background: #ddeee4;
+  border-color: #b9d5c4;
+  color: #335e49;
+}
+
+.nav-link:hover,
+.logout-btn:hover {
+  background: #e4eae3;
+}
+
+.logout-btn {
   cursor: pointer;
-  border: 0;
-  border-radius: 8px;
-  background: #dfe8df;
-  padding: 7px 10px;
+}
+
+@media (max-width: 700px) {
+  .app-header {
+    padding: 10px 12px;
+    gap: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-nav {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 .app-content {

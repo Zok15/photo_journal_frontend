@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
+import { getUser, setCurrentUser } from '../lib/session'
 
 const series = ref([])
 const loading = ref(true)
@@ -10,6 +11,7 @@ const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
 const seriesPreviews = ref({})
+const currentUser = ref(getUser())
 
 const search = ref('')
 const activeSort = ref('new')
@@ -33,6 +35,11 @@ const createError = ref('')
 const createWarnings = ref([])
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
+
+const journalTitle = computed(() => {
+  const title = currentUser.value?.journal_title
+  return typeof title === 'string' && title.trim() ? title.trim() : 'Фото Дневник'
+})
 
 const availableTags = computed(() => {
   const tags = new Set()
@@ -457,8 +464,25 @@ async function loadSeries(targetPage = 1) {
   }
 }
 
+async function loadProfileMeta() {
+  try {
+    const { data } = await api.get('/profile')
+    const user = data?.data || null
+
+    if (!user) {
+      return
+    }
+
+    currentUser.value = user
+    setCurrentUser(user)
+  } catch (_) {
+    // Keep default title when profile metadata is unavailable.
+  }
+}
+
 onMounted(() => {
   loadSeries(1)
+  loadProfileMeta()
 })
 </script>
 
@@ -466,7 +490,7 @@ onMounted(() => {
   <div class="journal-page">
     <div class="journal-shell">
       <header class="journal-header">
-        <h1>Фото Дневник</h1>
+        <h1>{{ journalTitle }}</h1>
 
         <div class="header-actions">
           <button type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">

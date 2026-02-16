@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../pages/LoginPage.vue'
+import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
 import { getToken } from '../lib/session'
@@ -25,6 +26,12 @@ const routes = [
     path: '/series/:id',
     name: 'series.view',
     component: SeriesViewPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: ProfilePage,
     meta: { requiresAuth: true },
   },
 ]
