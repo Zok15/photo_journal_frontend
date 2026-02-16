@@ -112,9 +112,12 @@ onMounted(() => {
         <p v-if="success" class="success">{{ success }}</p>
         <p v-if="error" class="error">{{ error }}</p>
 
-        <button type="submit" class="primary-btn" :disabled="saving">
-          {{ saving ? 'Сохраняем...' : 'Сохранить' }}
-        </button>
+        <div class="actions-row">
+          <button type="submit" class="primary-btn" :disabled="saving">
+            {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+          </button>
+          <RouterLink class="ghost-btn" to="/series">Назад</RouterLink>
+        </div>
       </form>
     </div>
   </div>
@@ -221,6 +224,27 @@ onMounted(() => {
 .hint {
   color: var(--muted);
   margin: 0;
+}
+
+.actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ghost-btn {
+  text-decoration: none;
+  color: #35403a;
+  background: #edf1ec;
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  font-weight: 700;
+  padding: 10px 14px;
+  line-height: 1;
+}
+
+.ghost-btn:hover {
+  background: #e4eae3;
 }
 
 .state-text {

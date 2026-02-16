@@ -168,7 +168,12 @@ async function saveSeries() {
       description: editDescription.value || null,
     })
 
-    item.value = data.data
+    const updated = data?.data || {}
+    item.value = {
+      ...item.value,
+      ...updated,
+      photos: item.value?.photos || [],
+    }
     isEditingSeries.value = false
   } catch (e) {
     editError.value = formatValidationError(e)
