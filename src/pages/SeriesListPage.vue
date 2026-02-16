@@ -48,9 +48,10 @@ const journalTitle = computed(() => {
 const availableTags = computed(() => {
   const tags = new Set()
 
-  Object.values(seriesPreviews.value).forEach((photos) => {
-    photos.forEach((photo) => {
-      ;(photo.tags || []).forEach((tag) => tags.add(tag))
+  series.value.forEach((item) => {
+    ;(item.tags || []).forEach((tag) => {
+      const name = String(tag?.name || '').trim().toLowerCase()
+      if (name) tags.add(name)
     })
   })
 
@@ -138,9 +139,7 @@ const filteredSeries = computed(() => {
       dateMatch = dateMatch && createdTime >= Math.min(fromTime, toTime) && createdTime <= Math.max(fromTime, toTime)
     }
 
-    const seriesTags = new Set(
-      (seriesPreviews.value[item.id] || []).flatMap((photo) => photo.tags || [])
-    )
+    const seriesTags = new Set((item.tags || []).map((tag) => String(tag?.name || '').trim().toLowerCase()).filter(Boolean))
     const tagsMatch =
       selectedTags.value.length === 0 ||
       selectedTags.value.every((tag) => seriesTags.has(tag))
@@ -521,7 +520,6 @@ async function loadSeriesPreviews(items) {
           id: photo.id,
           src: photo.preview_url || photoUrl(photo.path),
           alt: photo.original_name || `photo-${photo.id}`,
-          tags: (photo.tags || []).map((tag) => tag.name).filter(Boolean),
         }))
         .filter((photo) => photo.src)
 

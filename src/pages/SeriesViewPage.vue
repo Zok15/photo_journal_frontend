@@ -35,6 +35,9 @@ const dragOverPhotoId = ref(null)
 const reorderingPhotos = ref(false)
 const photoOrderError = ref('')
 const suppressPreviewOpen = ref(false)
+const refreshingTags = ref(false)
+const refreshTagsError = ref('')
+const refreshTagsInfo = ref('')
 
 const selectedPhoto = ref(null)
 const zoomPercent = ref(100)
@@ -53,6 +56,13 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
 const photoList = computed(() => item.value?.photos || [])
+const seriesTags = computed(() => {
+  const tags = (item.value?.tags || [])
+    .map((tag) => String(tag?.name || '').trim().toLowerCase())
+    .filter(Boolean)
+
+  return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b))
+})
 
 function apiOrigin() {
   const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
@@ -562,6 +572,41 @@ function downloadPhotoOriginal(photo) {
   })
 }
 
+async function refreshAutoTags() {
+  if (!item.value?.id) return
+
+  refreshingTags.value = true
+  refreshTagsError.value = ''
+  refreshTagsInfo.value = ''
+
+  try {
+    const { data } = await api.post(`/series/${item.value.id}/photos/retag`)
+    const processed = Number(data?.data?.processed || 0)
+    const failed = Number(data?.data?.failed || 0)
+    const tagsCount = Number(data?.data?.tags_count || 0)
+    const visionEnabled = Boolean(data?.data?.vision_enabled)
+    const visionHealthy = Boolean(data?.data?.vision_healthy)
+
+    refreshTagsInfo.value = failed > 0
+      ? `Теги обновлены для ${processed} фото, ошибок: ${failed}.`
+      : `Теги обновлены для ${processed} фото.`
+
+    if (tagsCount === 0) {
+      if (!visionEnabled) {
+        refreshTagsInfo.value = `${refreshTagsInfo.value} Vision-теггер выключен (VISION_TAGGER_ENABLED=false).`
+      } else if (!visionHealthy) {
+        refreshTagsInfo.value = `${refreshTagsInfo.value} Vision-теггер недоступен по сети.`
+      }
+    }
+
+    await loadSeries()
+  } catch (e) {
+    refreshTagsError.value = e?.response?.data?.message || 'Не удалось обновить теги.'
+  } finally {
+    refreshingTags.value = false
+  }
+}
+
 async function loadSeries() {
   loading.value = true
   error.value = ''
@@ -617,6 +662,9 @@ watch(() => route.params.id, () => {
             <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
               {{ showUploadForm ? 'Скрыть форму' : 'Добавить фото' }}
             </button>
+            <button type="button" class="ghost-btn" :disabled="refreshingTags" @click="refreshAutoTags">
+              {{ refreshingTags ? 'Обновляем теги...' : 'Обновить теги' }}
+            </button>
             <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" title="Редактировать">
               ✎
             </button>
@@ -627,6 +675,11 @@ watch(() => route.params.id, () => {
         </header>
 
         <p class="series-description">{{ item.description || 'Описание пока не добавлено.' }}</p>
+        <div v-if="seriesTags.length" class="series-tags">
+          <span v-for="tag in seriesTags" :key="tag" class="series-tag">#{{ tag }}</span>
+        </div>
+        <p v-if="refreshTagsError" class="error">{{ refreshTagsError }}</p>
+        <p v-else-if="refreshTagsInfo" class="hint">{{ refreshTagsInfo }}</p>
 
         <section v-if="showUploadForm" class="upload-panel">
           <h2>Добавить фото</h2>
@@ -868,6 +921,24 @@ watch(() => route.params.id, () => {
   margin: 12px 0 16px;
   font-size: 19px;
   color: #4b574f;
+}
+
+.series-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -6px 0 14px;
+}
+
+.series-tag {
+  display: inline-block;
+  border: 1px solid #ced8cd;
+  border-radius: 999px;
+  background: #eef3ed;
+  color: #4f6354;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .upload-panel {
