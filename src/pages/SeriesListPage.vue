@@ -842,7 +842,11 @@ onBeforeUnmount(() => {
           <div v-else class="series-grid">
             <article v-for="item in filteredSeries" :key="item.id" class="series-card">
               <header class="series-card-header">
-                <h3>{{ item.title }}</h3>
+                <h3>
+                  <RouterLink class="series-title-link" :to="`/series/${item.id}`">
+                    {{ item.title }}
+                  </RouterLink>
+                </h3>
                 <RouterLink class="view-link" :to="`/series/${item.id}`">Открыть</RouterLink>
               </header>
 
@@ -1200,6 +1204,15 @@ onBeforeUnmount(() => {
   font-size: 38px;
   line-height: 1;
   letter-spacing: -0.03em;
+}
+
+.series-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.series-title-link:hover {
+  text-decoration: underline;
 }
 
 .view-link {

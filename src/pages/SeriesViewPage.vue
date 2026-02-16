@@ -524,6 +524,44 @@ async function renamePhoto(photo) {
   }
 }
 
+function downloadPhotoOriginal(photo) {
+  if (!item.value?.id || !photo?.id) return
+
+  const fallbackName = photo?.original_name || `photo-${photo?.id || 'original'}.jpg`
+  const parseFileName = (contentDisposition) => {
+    if (!contentDisposition) return fallbackName
+
+    const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utfMatch?.[1]) {
+      try {
+        return decodeURIComponent(utfMatch[1].replace(/["']/g, ''))
+      } catch (_) {
+        return utfMatch[1].replace(/["']/g, '')
+      }
+    }
+
+    const asciiMatch = contentDisposition.match(/filename="?([^\";]+)"?/i)
+    return asciiMatch?.[1] || fallbackName
+  }
+
+  api.get(`/series/${item.value.id}/photos/${photo.id}/download`, {
+    responseType: 'blob',
+  }).then((response) => {
+    const fileName = parseFileName(response.headers?.['content-disposition'])
+    const blobUrl = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = fileName
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(blobUrl)
+  }).catch((e) => {
+    error.value = e?.response?.data?.message || 'Не удалось скачать оригинал фото.'
+  })
+}
+
 async function loadSeries() {
   loading.value = true
   error.value = ''
@@ -668,6 +706,7 @@ watch(() => route.params.id, () => {
               <div class="thumb-bottom">
                 <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
                 <div class="thumb-actions">
+                  <button type="button" class="icon-ghost-btn" title="Скачать оригинал" @click.stop="downloadPhotoOriginal(photo)">⤓</button>
                   <button type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(photo)">✎</button>
                   <button type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(photo)">🗑</button>
                 </div>
@@ -869,12 +908,15 @@ watch(() => route.params.id, () => {
 }
 
 .photo-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  column-count: 2;
+  column-gap: 10px;
 }
 
 .photo-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 10px;
+  break-inside: avoid;
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
@@ -1161,13 +1203,13 @@ watch(() => route.params.id, () => {
 
 @media (min-width: 1200px) {
   .photo-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-count: 3;
   }
 }
 
 @media (min-width: 1550px) {
   .photo-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-count: 4;
   }
 }
 
@@ -1195,7 +1237,7 @@ watch(() => route.params.id, () => {
   }
 
   .photo-grid {
-    grid-template-columns: 1fr;
+    column-count: 1;
   }
 
   .thumb {
