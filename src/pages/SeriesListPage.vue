@@ -39,6 +39,7 @@ const createError = ref('')
 const createWarnings = ref([])
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
+const showMobileFilters = ref(false)
 
 const journalTitle = computed(() => {
   const title = currentUser.value?.journal_title
@@ -670,6 +671,10 @@ onBeforeUnmount(() => {
   }
   previewGridElements.clear()
 })
+
+function toggleMobileFilters() {
+  showMobileFilters.value = !showMobileFilters.value
+}
 </script>
 
 <template>
@@ -686,7 +691,17 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="journal-body">
-        <aside class="filters-panel">
+        <button
+          type="button"
+          class="filters-toggle-mobile"
+          :aria-expanded="showMobileFilters ? 'true' : 'false'"
+          @click="toggleMobileFilters"
+        >
+          <span class="filters-toggle-icon">⌕</span>
+          {{ showMobileFilters ? 'Скрыть фильтры' : 'Фильтр' }}
+        </button>
+
+        <aside class="filters-panel" :class="{ 'filters-panel--mobile-open': showMobileFilters }">
           <h2>Фильтры</h2>
 
           <section class="filter-group">
@@ -952,6 +967,10 @@ onBeforeUnmount(() => {
 .journal-body {
   display: grid;
   grid-template-columns: 300px 1fr;
+}
+
+.filters-toggle-mobile {
+  display: none;
 }
 
 .filters-panel {
@@ -1344,9 +1363,34 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .filters-toggle-mobile {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: max-content;
+    margin: 14px 20px 0;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--chip);
+    color: var(--text);
+    font-weight: 700;
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+
+  .filters-toggle-icon {
+    font-size: 14px;
+    line-height: 1;
+  }
+
   .filters-panel {
+    display: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  .filters-panel.filters-panel--mobile-open {
+    display: block;
   }
 }
 
