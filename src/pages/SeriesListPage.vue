@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
@@ -12,8 +12,17 @@ const lastPage = ref(1)
 const seriesPreviews = ref({})
 
 const search = ref('')
-const activePeriod = ref('week')
+const activeSort = ref('new')
+const selectedTags = ref([])
+const dateFrom = ref('')
+const dateTo = ref('')
+const selectedCalendarDate = ref('')
+const rangeFromText = ref('')
+const rangeToText = ref('')
+const nativeFromInput = ref(null)
+const nativeToInput = ref(null)
 const showCreateForm = ref(false)
+const calendarMonthCursor = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
 
 const createTitle = ref('')
 const createDescription = ref('')
@@ -25,17 +34,116 @@ const createWarnings = ref([])
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
+const availableTags = computed(() => {
+  const tags = new Set()
+
+  Object.values(seriesPreviews.value).forEach((photos) => {
+    photos.forEach((photo) => {
+      ;(photo.tags || []).forEach((tag) => tags.add(tag))
+    })
+  })
+
+  return Array.from(tags).sort((a, b) => a.localeCompare(b))
+})
+
+function toLocalDateKey(input) {
+  const date = input instanceof Date ? input : new Date(input)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const seriesDateKeys = computed(() => {
+  const keys = new Set()
+
+  series.value.forEach((item) => {
+    if (!item.created_at) {
+      return
+    }
+
+    const key = toLocalDateKey(item.created_at)
+    if (!key) return
+    keys.add(key)
+  })
+
+  return keys
+})
+
+const calendarMonthLabel = computed(() =>
+  new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(calendarMonthCursor.value)
+)
+
+const calendarCells = computed(() => {
+  const cursor = calendarMonthCursor.value
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
+  const first = new Date(year, month, 1)
+  const firstWeekday = (first.getDay() + 6) % 7
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells = []
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    cells.push({ key: `empty-${i}`, empty: true })
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(year, month, day)
+    const key = toLocalDateKey(date)
+    cells.push({
+      key,
+      empty: false,
+      day,
+      iso: key,
+      hasSeries: seriesDateKeys.value.has(key),
+    })
+  }
+
+  return cells
+})
+
 const filteredSeries = computed(() => {
   const query = search.value.trim().toLowerCase()
 
-  if (!query) {
-    return series.value
-  }
-
-  return series.value.filter((item) => {
+  const result = series.value.filter((item) => {
     const haystack = `${item.title || ''} ${item.description || ''}`.toLowerCase()
-    return haystack.includes(query)
+    const queryMatch = !query || haystack.includes(query)
+
+    const created = new Date(item.created_at || 0)
+    const createdTime = created.getTime()
+    let dateMatch = Number.isFinite(createdTime)
+
+    if (selectedCalendarDate.value) {
+      const from = new Date(`${selectedCalendarDate.value}T00:00:00`).getTime()
+      const to = new Date(`${selectedCalendarDate.value}T23:59:59.999`).getTime()
+      dateMatch = dateMatch && createdTime >= from && createdTime <= to
+    } else {
+      const fromTime = dateFrom.value ? new Date(`${dateFrom.value}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
+      const toTime = dateTo.value ? new Date(`${dateTo.value}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY
+      dateMatch = dateMatch && createdTime >= Math.min(fromTime, toTime) && createdTime <= Math.max(fromTime, toTime)
+    }
+
+    const seriesTags = new Set(
+      (seriesPreviews.value[item.id] || []).flatMap((photo) => photo.tags || [])
+    )
+    const tagsMatch =
+      selectedTags.value.length === 0 ||
+      selectedTags.value.every((tag) => seriesTags.has(tag))
+
+    return queryMatch && dateMatch && tagsMatch
   })
+
+  result.sort((a, b) => {
+    const timeA = new Date(a.created_at || 0).getTime()
+    const timeB = new Date(b.created_at || 0).getTime()
+    return activeSort.value === 'new' ? timeB - timeA : timeA - timeB
+  })
+
+  return result
 })
 
 function onCreateFilesChanged(event) {
@@ -106,6 +214,129 @@ function previewTiles(seriesId) {
   return seriesPreviews.value[seriesId] || []
 }
 
+function toggleTag(tag) {
+  if (selectedTags.value.includes(tag)) {
+    selectedTags.value = selectedTags.value.filter((item) => item !== tag)
+    return
+  }
+
+  selectedTags.value = [...selectedTags.value, tag]
+}
+
+function shiftCalendarMonth(offset) {
+  const current = calendarMonthCursor.value
+  calendarMonthCursor.value = new Date(current.getFullYear(), current.getMonth() + offset, 1)
+}
+
+function pickCalendarDate(iso) {
+  selectedCalendarDate.value = iso
+  dateFrom.value = ''
+  dateTo.value = ''
+  rangeFromText.value = ''
+  rangeToText.value = ''
+}
+
+function isDateInRange(iso) {
+  return selectedCalendarDate.value === iso
+}
+
+function clearDateRange() {
+  dateFrom.value = ''
+  dateTo.value = ''
+  rangeFromText.value = ''
+  rangeToText.value = ''
+  selectedCalendarDate.value = ''
+}
+
+function formatIsoToShort(iso) {
+  if (!iso) return ''
+  const [year, month, day] = iso.split('-')
+  return `${day}.${month}.${year.slice(-2)}`
+}
+
+function parseShortDate(value) {
+  const clean = value.trim()
+  if (!clean) return ''
+
+  const match = clean.match(/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/)
+  if (!match) return null
+
+  const day = Number(match[1])
+  const month = Number(match[2])
+  let year = Number(match[3])
+
+  if (match[3].length === 2) {
+    year += 2000
+  }
+
+  const date = new Date(year, month - 1, day)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function applyRangeInput(field) {
+  const raw = field === 'from' ? rangeFromText.value : rangeToText.value
+  const parsed = parseShortDate(raw)
+
+  if (parsed === null) {
+    if (field === 'from') rangeFromText.value = dateFrom.value ? formatIsoToShort(dateFrom.value) : ''
+    if (field === 'to') rangeToText.value = dateTo.value ? formatIsoToShort(dateTo.value) : ''
+    return
+  }
+
+  if (field === 'from') {
+    dateFrom.value = parsed
+    rangeFromText.value = parsed ? formatIsoToShort(parsed) : ''
+  }
+
+  if (field === 'to') {
+    dateTo.value = parsed
+    rangeToText.value = parsed ? formatIsoToShort(parsed) : ''
+  }
+
+  selectedCalendarDate.value = ''
+}
+
+function openNativePicker(field) {
+  const input = field === 'from' ? nativeFromInput.value : nativeToInput.value
+  if (!input) return
+
+  if (typeof input.showPicker === 'function') {
+    input.showPicker()
+    return
+  }
+
+  input.focus()
+}
+
+function onNativeRangePicked(field, event) {
+  const value = event?.target?.value || ''
+  if (!value) return
+
+  if (field === 'from') {
+    dateFrom.value = value
+  } else {
+    dateTo.value = value
+  }
+
+  selectedCalendarDate.value = ''
+}
+
+watch(dateFrom, (value) => {
+  rangeFromText.value = value ? formatIsoToShort(value) : ''
+})
+
+watch(dateTo, (value) => {
+  rangeToText.value = value ? formatIsoToShort(value) : ''
+})
+
 async function loadSeriesPreviews(items) {
   if (!items.length) {
     seriesPreviews.value = {}
@@ -117,7 +348,7 @@ async function loadSeriesPreviews(items) {
       const { data } = await api.get(`/series/${entry.id}`, {
         params: {
           include_photos: 1,
-          photos_limit: 4,
+          photos_limit: Math.min(entry.photos_count || 30, 30),
         },
       })
 
@@ -126,6 +357,7 @@ async function loadSeriesPreviews(items) {
           id: photo.id,
           src: photo.preview_url || photoUrl(photo.path),
           alt: photo.original_name || `photo-${photo.id}`,
+          tags: (photo.tags || []).map((tag) => tag.name).filter(Boolean),
         }))
         .filter((photo) => photo.src)
 
@@ -237,7 +469,6 @@ onMounted(() => {
         <h1>Фото Дневник</h1>
 
         <div class="header-actions">
-          <button type="button" class="ghost-btn">▦</button>
           <button type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
             {{ showCreateForm ? 'Закрыть форму' : 'Новая серия' }}
           </button>
@@ -250,25 +481,104 @@ onMounted(() => {
 
           <section class="filter-group">
             <h3>Дата</h3>
-            <div class="chip-row">
-              <button type="button" class="chip" :class="{ active: activePeriod === 'day' }" @click="activePeriod = 'day'">Сегодня</button>
-              <button type="button" class="chip" :class="{ active: activePeriod === 'week' }" @click="activePeriod = 'week'">Неделя</button>
-              <button type="button" class="chip" :class="{ active: activePeriod === 'month' }" @click="activePeriod = 'month'">Месяц</button>
+            <div class="filter-row filter-range">
+              <label class="filter-label">
+                <span>От</span>
+                <div class="range-input-wrap">
+                  <input
+                    v-model="rangeFromText"
+                    type="text"
+                    inputmode="numeric"
+                    placeholder="дд.мм.гг"
+                    @blur="applyRangeInput('from')"
+                  />
+                  <button type="button" class="range-picker-btn" @click="openNativePicker('from')">📅</button>
+                  <input
+                    ref="nativeFromInput"
+                    type="date"
+                    class="native-picker-proxy"
+                    @change="onNativeRangePicked('from', $event)"
+                  />
+                </div>
+              </label>
+              <label class="filter-label">
+                <span>До</span>
+                <div class="range-input-wrap">
+                  <input
+                    v-model="rangeToText"
+                    type="text"
+                    inputmode="numeric"
+                    placeholder="дд.мм.гг"
+                    @blur="applyRangeInput('to')"
+                  />
+                  <button type="button" class="range-picker-btn" @click="openNativePicker('to')">📅</button>
+                  <input
+                    ref="nativeToInput"
+                    type="date"
+                    class="native-picker-proxy"
+                    @change="onNativeRangePicked('to', $event)"
+                  />
+                </div>
+              </label>
+            </div>
+
+            <div class="chip-row filter-row">
+              <button type="button" class="chip" @click="clearDateRange">Очистить диапазон</button>
+            </div>
+
+            <div class="filter-row calendar-widget">
+              <div class="calendar-head">
+                <button type="button" class="chip calendar-nav" @click="shiftCalendarMonth(-1)">←</button>
+                <strong>{{ calendarMonthLabel }}</strong>
+                <button type="button" class="chip calendar-nav" @click="shiftCalendarMonth(1)">→</button>
+              </div>
+              <div class="calendar-weekdays">
+                <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+              </div>
+              <div class="calendar-grid">
+                <button
+                  v-for="cell in calendarCells"
+                  :key="cell.key"
+                  type="button"
+                  class="calendar-day"
+                  :class="{ empty: cell.empty, selected: !cell.empty && isDateInRange(cell.iso) }"
+                  :disabled="cell.empty"
+                  @click="!cell.empty && pickCalendarDate(cell.iso)"
+                >
+                  <span>{{ cell.day }}</span>
+                  <i v-if="!cell.empty && cell.hasSeries" class="calendar-dot"></i>
+                </button>
+              </div>
             </div>
           </section>
 
           <section class="filter-group">
             <h3>Теги</h3>
             <div class="chip-row chips-wrap">
-              <span class="tag-chip">#birds</span>
-              <span class="tag-chip">#flowers</span>
-              <span class="tag-chip">#spring</span>
+              <button
+                v-for="tag in availableTags"
+                :key="tag"
+                type="button"
+                class="tag-chip"
+                :class="{ active: selectedTags.includes(tag) }"
+                @click="toggleTag(tag)"
+              >
+                #{{ tag }}
+              </button>
+              <span v-if="!availableTags.length" class="hint">Нет тегов</span>
             </div>
           </section>
 
           <section class="filter-group">
             <h3>Сортировка</h3>
-            <div class="sort-box">Новые сверху</div>
+            <div class="chip-row">
+              <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'">
+                Новые
+              </button>
+              <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'">
+                Старые
+              </button>
+            </div>
           </section>
         </aside>
 
@@ -439,6 +749,131 @@ onMounted(() => {
   gap: 8px;
 }
 
+.filter-row {
+  margin-top: 10px;
+}
+
+.filter-label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.filter-label input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9faf8;
+  color: var(--text);
+  padding: 8px 9px;
+  font-size: 14px;
+}
+
+.filter-label input::placeholder {
+  color: #aeb7ad;
+}
+
+.filter-range {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.range-input-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.range-picker-btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f2f5f0;
+  cursor: pointer;
+  padding: 7px 9px;
+  line-height: 1;
+}
+
+.native-picker-proxy {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.calendar-widget {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.calendar-head strong {
+  text-transform: capitalize;
+  font-size: 14px;
+}
+
+.calendar-nav {
+  padding: 6px 9px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar-day {
+  border: 1px solid var(--line);
+  background: #f9faf8;
+  border-radius: 6px;
+  min-height: 34px;
+  padding: 4px 0 2px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.calendar-day.empty {
+  visibility: hidden;
+}
+
+.calendar-day.selected {
+  background: var(--accent-soft);
+  border-color: #87ad98;
+}
+
+.calendar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #4f8366;
+  display: block;
+  margin-top: 1px;
+}
+
 .chips-wrap {
   flex-wrap: wrap;
 }
@@ -458,7 +893,16 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.tag-chip {
+  cursor: pointer;
+}
+
 .chip.active {
+  background: var(--accent-soft);
+  color: #3f6d56;
+}
+
+.tag-chip.active {
   background: var(--accent-soft);
   color: #3f6d56;
 }
@@ -520,11 +964,6 @@ onMounted(() => {
   border-radius: 12px;
   background: #fbfcfa;
   padding: 14px;
-  transition: transform 0.2s ease;
-}
-
-.series-card:hover {
-  transform: translateY(-2px);
 }
 
 .series-card-header {
@@ -567,13 +1006,14 @@ onMounted(() => {
 
 .preview-grid {
   margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
 }
 
 .preview-tile-image {
-  width: min(100%, 350px);
+  width: 100%;
   height: 220px;
   border-radius: 8px;
   border: 1px solid rgba(125, 134, 128, 0.25);
