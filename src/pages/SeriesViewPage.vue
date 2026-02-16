@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
+import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
+import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,17 +51,6 @@ let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
 
 const selectedPhoto = ref(null)
-const zoomPercent = ref(100)
-const previewNaturalWidth = ref(0)
-const previewNaturalHeight = ref(0)
-const viewportWidth = ref(window.innerWidth)
-const viewportHeight = ref(window.innerHeight)
-const previewStageRef = ref(null)
-const isDraggingPreview = ref(false)
-const dragStartX = ref(0)
-const dragStartY = ref(0)
-const dragScrollLeft = ref(0)
-const dragScrollTop = ref(0)
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
@@ -231,59 +222,11 @@ function openPreview(photo) {
   }
 
   selectedPhoto.value = photo
-  zoomPercent.value = 100
-  previewNaturalWidth.value = 0
-  previewNaturalHeight.value = 0
 }
 
 function closePreview() {
   selectedPhoto.value = null
-  zoomPercent.value = 100
-  previewNaturalWidth.value = 0
-  previewNaturalHeight.value = 0
 }
-
-function zoomIn() {
-  zoomPercent.value = Math.min(300, zoomPercent.value + 10)
-}
-
-function zoomOut() {
-  zoomPercent.value = Math.max(50, zoomPercent.value - 10)
-}
-
-function onPreviewImageLoad(event) {
-  previewNaturalWidth.value = event.target?.naturalWidth || 0
-  previewNaturalHeight.value = event.target?.naturalHeight || 0
-}
-
-function syncViewport() {
-  viewportWidth.value = window.innerWidth
-  viewportHeight.value = window.innerHeight
-}
-
-const previewImageStyle = computed(() => {
-  if (!previewNaturalWidth.value || !previewNaturalHeight.value) {
-    return {}
-  }
-
-  const maxWidth = Math.min(viewportWidth.value * 0.88, 1400)
-  const maxHeight = Math.max(200, viewportHeight.value - 72)
-  const fitScale = Math.min(
-    maxWidth / previewNaturalWidth.value,
-    maxHeight / previewNaturalHeight.value,
-    1
-  )
-  const zoomScale = zoomPercent.value / 100
-  const finalWidth = Math.round(previewNaturalWidth.value * fitScale * zoomScale)
-  const finalHeight = Math.round(previewNaturalHeight.value * fitScale * zoomScale)
-
-  return {
-    width: `${Math.max(1, finalWidth)}px`,
-    height: `${Math.max(1, finalHeight)}px`,
-    maxWidth: 'none',
-    maxHeight: 'none',
-  }
-})
 
 function onKeydown(event) {
   if (event.key === 'Escape' && showDeletePhotoModal.value) {
@@ -299,40 +242,6 @@ function onKeydown(event) {
   if (event.key === 'Escape' && selectedPhoto.value) {
     closePreview()
   }
-}
-
-function onPreviewMouseDown(event) {
-  const stage = previewStageRef.value
-  if (!stage) {
-    return
-  }
-
-  isDraggingPreview.value = true
-  dragStartX.value = event.clientX
-  dragStartY.value = event.clientY
-  dragScrollLeft.value = stage.scrollLeft
-  dragScrollTop.value = stage.scrollTop
-}
-
-function onPreviewMouseMove(event) {
-  if (!isDraggingPreview.value) {
-    return
-  }
-
-  const stage = previewStageRef.value
-  if (!stage) {
-    return
-  }
-
-  const dx = event.clientX - dragStartX.value
-  const dy = event.clientY - dragStartY.value
-
-  stage.scrollLeft = dragScrollLeft.value - dx
-  stage.scrollTop = dragScrollTop.value - dy
-}
-
-function stopPreviewDrag() {
-  isDraggingPreview.value = false
 }
 
 function onPhotoDragStart(photo, event) {
@@ -782,13 +691,11 @@ async function loadSeries() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  window.addEventListener('resize', syncViewport)
   loadSeries()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('resize', syncViewport)
   if (tagSuggestTimerId !== null) {
     clearTimeout(tagSuggestTimerId)
     tagSuggestTimerId = null
@@ -956,7 +863,7 @@ watch(() => route.params.id, () => {
             @dragend="onPhotoDragEnd"
             @click="openPreview(photo)"
           >
-            <img class="thumb" :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
+            <LazyPhotoThumb :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
             <div class="thumb-meta">
               <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
               <div class="thumb-bottom">
@@ -975,38 +882,12 @@ watch(() => route.params.id, () => {
       </template>
     </div>
 
-    <div v-if="selectedPhoto" class="preview-overlay" @click.self="closePreview">
-      <div class="preview-shell">
-        <div class="preview-toolbar">
-          <div class="preview-actions">
-            <button type="button" class="preview-btn" @click="zoomOut">-</button>
-            <span class="zoom-value">{{ zoomPercent }}%</span>
-            <button type="button" class="preview-btn" @click="zoomIn">+</button>
-            <button type="button" class="preview-btn preview-btn-close" @click="closePreview">×</button>
-          </div>
-        </div>
-
-        <div
-          ref="previewStageRef"
-          class="preview-stage"
-          :class="{ 'preview-stage--dragging': isDraggingPreview }"
-          @mousedown="onPreviewMouseDown"
-          @mousemove="onPreviewMouseMove"
-          @mouseup="stopPreviewDrag"
-          @mouseleave="stopPreviewDrag"
-        >
-          <div class="preview-inner">
-            <img
-              class="preview-image"
-              :src="resolvedPhotoUrl(selectedPhoto)"
-              :alt="selectedPhoto.original_name || 'photo'"
-              :style="previewImageStyle"
-              @load="onPreviewImageLoad"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <PhotoPreviewModal
+      :open="Boolean(selectedPhoto)"
+      :photo="selectedPhoto"
+      :src="resolvedPhotoUrl(selectedPhoto)"
+      @close="closePreview"
+    />
 
     <div v-if="showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
       <div class="confirm-modal">
@@ -1338,14 +1219,6 @@ watch(() => route.params.id, () => {
   box-shadow: inset 0 0 0 2px rgba(79, 131, 102, 0.18);
 }
 
-.thumb {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  background: linear-gradient(135deg, #8fb39b 0%, #d6e2cf 45%, #f0e8d8 100%);
-}
-
 .thumb-meta {
   display: grid;
   gap: 3px;
@@ -1383,17 +1256,6 @@ watch(() => route.params.id, () => {
 
 .icon-ghost-btn:hover {
   background: #e3e9e1;
-}
-
-.preview-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(25, 31, 27, 0.84);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 60;
-  padding: 20px;
 }
 
 .confirm-overlay {
@@ -1437,95 +1299,6 @@ watch(() => route.params.id, () => {
   display: flex;
   gap: 8px;
   margin-top: 12px;
-}
-
-.preview-shell {
-  position: relative;
-  width: min(92vw, 1400px);
-  height: calc(100vh - 40px);
-  border-radius: 12px;
-  border: 1px solid #56645a;
-  background: #222924;
-  overflow: hidden;
-}
-
-.preview-toolbar {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 3;
-  height: 40px;
-  background: #1e2621;
-  border: 1px solid #445247;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-}
-
-.preview-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.preview-btn {
-  border: 0;
-  border-radius: 7px;
-  min-height: 28px;
-  cursor: pointer;
-  font-weight: 700;
-  color: #eef4ef;
-  background: rgba(49, 65, 56, 0.86);
-  padding: 4px 9px;
-}
-
-.preview-btn:hover {
-  background: rgba(78, 101, 88, 0.92);
-}
-
-.zoom-value {
-  color: #eef4ef;
-  font-weight: 700;
-  min-width: 52px;
-  text-align: center;
-}
-
-.preview-btn-close {
-  min-width: 30px;
-  padding: 0;
-  font-size: 18px;
-}
-
-.preview-stage {
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  padding: 16px;
-  cursor: grab;
-  user-select: none;
-}
-
-.preview-stage--dragging {
-  cursor: grabbing;
-}
-
-.preview-inner {
-  min-width: 100%;
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.preview-image {
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: min(88vw, 1400px);
-  max-height: calc(100vh - 72px);
-  object-fit: contain;
-  pointer-events: none;
 }
 
 .primary-btn {
@@ -1638,19 +1411,6 @@ watch(() => route.params.id, () => {
 
   .photo-grid {
     column-count: 1;
-  }
-
-  .thumb {
-    height: auto;
-  }
-
-  .preview-actions {
-    gap: 6px;
-  }
-
-  .preview-toolbar {
-    top: 8px;
-    right: 8px;
   }
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
@@ -10,14 +11,21 @@ const loading = ref(true)
 const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
+const loadedPage = ref(0)
 const seriesPreviews = ref({})
 const currentUser = ref(getUser())
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewGridElements = new Map()
 let previewResizeObserver = null
+let searchDebounceTimer = null
+const syncingQueryState = ref(false)
+
+const route = useRoute()
+const router = useRouter()
 
 const search = ref('')
+const searchInput = ref('')
 const activeSort = ref('new')
 const selectedTags = ref([])
 const dateFrom = ref('')
@@ -157,6 +165,83 @@ const filteredSeries = computed(() => {
 
   return result
 })
+
+function buildQueryState() {
+  const query = {}
+
+  const searchValue = search.value.trim()
+  if (searchValue) query.search = searchValue
+
+  if (selectedTags.value.length) {
+    query.tag = selectedTags.value.join(',')
+  }
+
+  if (selectedCalendarDate.value) {
+    query.date = selectedCalendarDate.value
+  } else {
+    if (dateFrom.value) query.date_from = dateFrom.value
+    if (dateTo.value) query.date_to = dateTo.value
+  }
+
+  if (activeSort.value !== 'new') {
+    query.sort = activeSort.value
+  }
+
+  if (page.value > 1) {
+    query.page = String(page.value)
+  }
+
+  return query
+}
+
+function applyRouteQuery(query) {
+  syncingQueryState.value = true
+  try {
+    const nextSearch = typeof query.search === 'string' ? query.search : ''
+    search.value = nextSearch
+    searchInput.value = nextSearch
+
+    const nextSort = typeof query.sort === 'string' && ['new', 'old'].includes(query.sort) ? query.sort : 'new'
+    activeSort.value = nextSort
+
+    const tags = typeof query.tag === 'string'
+      ? query.tag.split(',').map((item) => item.trim()).filter(Boolean)
+      : []
+    selectedTags.value = tags
+
+    const pickedDate = typeof query.date === 'string' ? query.date : ''
+    selectedCalendarDate.value = pickedDate
+    dateFrom.value = pickedDate ? '' : (typeof query.date_from === 'string' ? query.date_from : '')
+    dateTo.value = pickedDate ? '' : (typeof query.date_to === 'string' ? query.date_to : '')
+
+    const nextPage = Number.parseInt(String(query.page || '1'), 10)
+    page.value = Number.isFinite(nextPage) && nextPage > 0 ? nextPage : 1
+  } finally {
+    syncingQueryState.value = false
+  }
+}
+
+function syncStateToQuery() {
+  if (syncingQueryState.value) return
+
+  const nextQuery = buildQueryState()
+  const currentQuery = route.query || {}
+
+  const currentNormalized = JSON.stringify(Object.keys(currentQuery).sort().reduce((acc, key) => {
+    acc[key] = currentQuery[key]
+    return acc
+  }, {}))
+  const nextNormalized = JSON.stringify(Object.keys(nextQuery).sort().reduce((acc, key) => {
+    acc[key] = nextQuery[key]
+    return acc
+  }, {}))
+
+  if (currentNormalized === nextNormalized) {
+    return
+  }
+
+  router.replace({ query: nextQuery })
+}
 
 function onCreateFilesChanged(event) {
   const files = Array.from(event.target.files || [])
@@ -620,12 +705,20 @@ async function loadSeries(targetPage = 1) {
     series.value = data.data || []
     page.value = data.current_page || targetPage
     lastPage.value = data.last_page || 1
+    loadedPage.value = page.value
     await loadSeriesPreviews(series.value)
   } catch (e) {
     error.value = e?.response?.data?.message || 'Failed to load series.'
   } finally {
     loading.value = false
   }
+}
+
+function goToPage(targetPage) {
+  if (loading.value) return
+  if (targetPage < 1 || targetPage > lastPage.value) return
+  if (targetPage === loadedPage.value) return
+  loadSeries(targetPage)
 }
 
 async function loadProfileMeta() {
@@ -660,7 +753,8 @@ onMounted(() => {
     }
   })
 
-  loadSeries(1)
+  applyRouteQuery(route.query)
+  loadSeries(page.value || 1)
   loadProfileMeta()
 })
 
@@ -670,6 +764,32 @@ onBeforeUnmount(() => {
     previewResizeObserver = null
   }
   previewGridElements.clear()
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = null
+  }
+})
+
+watch(() => route.query, (query) => {
+  applyRouteQuery(query)
+
+  if (page.value !== loadedPage.value) {
+    loadSeries(page.value)
+  }
+})
+
+watch(searchInput, (value) => {
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+  }
+
+  searchDebounceTimer = window.setTimeout(() => {
+    search.value = String(value || '')
+  }, 300)
+})
+
+watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort, page], () => {
+  syncStateToQuery()
 })
 
 function toggleMobileFilters() {
@@ -697,7 +817,7 @@ function toggleMobileFilters() {
           :aria-expanded="showMobileFilters ? 'true' : 'false'"
           @click="toggleMobileFilters"
         >
-          <span class="filters-toggle-icon">⌕</span>
+          <span class="filters-toggle-icon">⚲</span>
           {{ showMobileFilters ? 'Скрыть фильтры' : 'Фильтр' }}
         </button>
 
@@ -851,7 +971,7 @@ function toggleMobileFilters() {
           </section>
 
           <section class="search-row">
-            <input v-model="search" type="text" placeholder="Искать по названию и описанию..." />
+            <input v-model="searchInput" type="text" placeholder="Искать по названию и описанию..." />
           </section>
 
           <p v-if="loading" class="state-text">Загрузка...</p>
@@ -905,9 +1025,9 @@ function toggleMobileFilters() {
           </div>
 
           <div class="pager" v-if="!loading && !error && lastPage > 1">
-            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="loadSeries(page - 1)">Назад</button>
+            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">Назад</button>
             <span>Страница {{ page }} / {{ lastPage }}</span>
-            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="loadSeries(page + 1)">Вперёд</button>
+            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">Вперёд</button>
           </div>
         </main>
       </div>

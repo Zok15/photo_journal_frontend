@@ -39,3 +39,7 @@ export function clearSession() {
 export function setCurrentUser(nextUser) {
   user.value = nextUser
 }
+
+export const session = {
+  clear: clearSession,
+}

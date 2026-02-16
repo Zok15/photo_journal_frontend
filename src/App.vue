@@ -1,10 +1,8 @@
 <script setup>
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from './lib/api'
-import { clearSession, isAuthenticated } from './lib/session'
-
-const router = useRouter()
+import { logout as performLogout } from './lib/logout'
+import { isAuthenticated } from './lib/session'
 
 const signedIn = computed(() => isAuthenticated.value)
 
@@ -13,10 +11,9 @@ async function logout() {
     await api.post('/auth/logout')
   } catch (_) {
     // Ignore backend logout errors; local session must still be cleared.
-  } finally {
-    clearSession()
-    router.push({ name: 'login' })
   }
+
+  await performLogout({ reason: 'manual' })
 }
 </script>
 
