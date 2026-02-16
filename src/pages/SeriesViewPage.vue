@@ -38,6 +38,15 @@ const suppressPreviewOpen = ref(false)
 const refreshingTags = ref(false)
 const refreshTagsError = ref('')
 const refreshTagsInfo = ref('')
+const newTagName = ref('')
+const addingTag = ref(false)
+const removingTagId = ref(null)
+const tagEditError = ref('')
+const showTagInput = ref(false)
+const tagSuggestions = ref([])
+const tagSuggestionsLoading = ref(false)
+let tagSuggestTimerId = null
+let tagSuggestRequestId = 0
 
 const selectedPhoto = ref(null)
 const zoomPercent = ref(100)
@@ -58,11 +67,34 @@ const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 const photoList = computed(() => item.value?.photos || [])
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
-    .map((tag) => String(tag?.name || '').trim().toLowerCase())
-    .filter(Boolean)
+    .map((tag) => ({
+      id: Number(tag?.id || 0),
+      name: String(tag?.name || '').trim(),
+    }))
+    .filter((tag) => tag.id > 0 && tag.name)
 
-  return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b))
+  return tags.sort((a, b) => a.name.localeCompare(b.name))
 })
+
+const attachedTagLookup = computed(() => {
+  return new Set(seriesTags.value.map((tag) => tag.name.toLowerCase()))
+})
+
+function mergeSeriesPayload(next) {
+  if (!next) {
+    return item.value
+  }
+
+  if (!item.value) {
+    return next
+  }
+
+  return {
+    ...item.value,
+    ...next,
+    photos: Array.isArray(next.photos) ? next.photos : (item.value.photos || []),
+  }
+}
 
 function apiOrigin() {
   const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
@@ -607,6 +639,127 @@ async function refreshAutoTags() {
   }
 }
 
+async function addSeriesTag() {
+  if (!item.value?.id) return
+
+  const prepared = String(newTagName.value || '').trim()
+  if (!prepared) {
+    tagEditError.value = 'Введите тег.'
+    return
+  }
+
+  addingTag.value = true
+  tagEditError.value = ''
+
+  try {
+    const { data } = await api.post(`/series/${item.value.id}/tags`, {
+      tags: [prepared],
+    })
+
+    item.value = mergeSeriesPayload(data?.data)
+    newTagName.value = ''
+    tagSuggestions.value = []
+    closeTagInput()
+  } catch (e) {
+    tagEditError.value = formatValidationError(e)
+  } finally {
+    addingTag.value = false
+  }
+}
+
+function openTagInput() {
+  showTagInput.value = true
+  tagEditError.value = ''
+  scheduleTagSuggestions()
+}
+
+function closeTagInput() {
+  if (addingTag.value) return
+  showTagInput.value = false
+  newTagName.value = ''
+  tagSuggestions.value = []
+  tagSuggestionsLoading.value = false
+  if (tagSuggestTimerId !== null) {
+    clearTimeout(tagSuggestTimerId)
+    tagSuggestTimerId = null
+  }
+}
+
+async function removeSeriesTag(tag) {
+  if (!item.value?.id || !tag?.id) return
+
+  removingTagId.value = tag.id
+  tagEditError.value = ''
+
+  try {
+    const { data } = await api.delete(`/series/${item.value.id}/tags/${tag.id}`)
+    item.value = mergeSeriesPayload(data?.data)
+  } catch (e) {
+    tagEditError.value = e?.response?.data?.message || 'Не удалось удалить тег.'
+  } finally {
+    removingTagId.value = null
+  }
+}
+
+function pickSuggestedTag(name) {
+  newTagName.value = name
+  tagSuggestions.value = []
+}
+
+function scheduleTagSuggestions() {
+  if (!showTagInput.value) return
+
+  if (tagSuggestTimerId !== null) {
+    clearTimeout(tagSuggestTimerId)
+  }
+
+  tagSuggestTimerId = window.setTimeout(() => {
+    fetchTagSuggestions()
+  }, 180)
+}
+
+async function fetchTagSuggestions() {
+  const query = String(newTagName.value || '').trim()
+  if (query.length < 1) {
+    tagSuggestions.value = []
+    tagSuggestionsLoading.value = false
+    return
+  }
+
+  const requestId = ++tagSuggestRequestId
+  tagSuggestionsLoading.value = true
+
+  try {
+    const { data } = await api.get('/tags/suggest', {
+      params: {
+        q: query,
+        limit: 8,
+      },
+    })
+
+    if (requestId !== tagSuggestRequestId) {
+      return
+    }
+
+    const current = query.toLowerCase()
+    const existing = attachedTagLookup.value
+    tagSuggestions.value = (Array.isArray(data?.data) ? data.data : [])
+      .map((tag) => String(tag?.name || '').trim())
+      .filter(Boolean)
+      .filter((name) => name.toLowerCase() !== current)
+      .filter((name) => !existing.has(name.toLowerCase()))
+      .slice(0, 8)
+  } catch (_) {
+    if (requestId === tagSuggestRequestId) {
+      tagSuggestions.value = []
+    }
+  } finally {
+    if (requestId === tagSuggestRequestId) {
+      tagSuggestionsLoading.value = false
+    }
+  }
+}
+
 async function loadSeries() {
   loading.value = true
   error.value = ''
@@ -636,6 +789,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', syncViewport)
+  if (tagSuggestTimerId !== null) {
+    clearTimeout(tagSuggestTimerId)
+    tagSuggestTimerId = null
+  }
 })
 
 watch(() => route.params.id, () => {
@@ -675,11 +832,57 @@ watch(() => route.params.id, () => {
         </header>
 
         <p class="series-description">{{ item.description || 'Описание пока не добавлено.' }}</p>
-        <div v-if="seriesTags.length" class="series-tags">
-          <span v-for="tag in seriesTags" :key="tag" class="series-tag">#{{ tag }}</span>
+        <div class="series-tags">
+          <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
+            #{{ tag.name }}
+            <button
+              type="button"
+              class="series-tag-remove"
+              :disabled="removingTagId === tag.id"
+              @click="removeSeriesTag(tag)"
+            >
+              ×
+            </button>
+          </span>
+
+          <button
+            v-if="!showTagInput"
+            type="button"
+            class="series-tag-add"
+            @click="openTagInput"
+          >
+            +
+          </button>
+
+          <form v-else class="series-tag-inline-form" @submit.prevent="addSeriesTag">
+            <div class="series-tag-input-wrap">
+              <input
+                v-model="newTagName"
+                type="text"
+                maxlength="50"
+                placeholder="new tag"
+                @keydown.esc.prevent="closeTagInput"
+                @input="scheduleTagSuggestions"
+                @focus="scheduleTagSuggestions"
+              />
+              <div v-if="tagSuggestionsLoading" class="series-tag-suggest-hint">Поиск...</div>
+              <ul v-else-if="tagSuggestions.length" class="series-tag-suggestions">
+                <li v-for="name in tagSuggestions" :key="name">
+                  <button type="button" @click="pickSuggestedTag(name)">#{{ name }}</button>
+                </li>
+              </ul>
+            </div>
+            <button type="submit" class="series-tag-inline-btn" :disabled="addingTag">
+              {{ addingTag ? '...' : 'OK' }}
+            </button>
+            <button type="button" class="series-tag-inline-btn" :disabled="addingTag" @click="closeTagInput">
+              ×
+            </button>
+          </form>
         </div>
         <p v-if="refreshTagsError" class="error">{{ refreshTagsError }}</p>
         <p v-else-if="refreshTagsInfo" class="hint">{{ refreshTagsInfo }}</p>
+        <p v-if="tagEditError" class="error">{{ tagEditError }}</p>
 
         <section v-if="showUploadForm" class="upload-panel">
           <h2>Добавить фото</h2>
@@ -931,7 +1134,9 @@ watch(() => route.params.id, () => {
 }
 
 .series-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid #ced8cd;
   border-radius: 999px;
   background: #eef3ed;
@@ -939,6 +1144,130 @@ watch(() => route.params.id, () => {
   padding: 2px 8px;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.series-tag-remove {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #4f6354;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+}
+
+.series-tag-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.series-tag-add {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border: 1px dashed #9db5a4;
+  border-radius: 999px;
+  background: #f4f8f2;
+  color: #3f6d56;
+  cursor: pointer;
+  width: 26px;
+  height: 24px;
+  line-height: 0;
+  font-size: 0;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.series-tag-add::before {
+  content: '+';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-size: 16px;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.series-tag-inline-form {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.series-tag-input-wrap {
+  position: relative;
+}
+
+.series-tag-inline-form input {
+  width: 128px;
+  box-sizing: border-box;
+  border: 1px solid #ced8cd;
+  border-radius: 999px;
+  background: #fff;
+  color: #4f6354;
+  padding: 3px 9px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.series-tag-suggest-hint {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  font-size: 11px;
+  color: #71807a;
+}
+
+.series-tag-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 148px;
+  max-width: 220px;
+  border: 1px solid #ced8cd;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(33, 49, 41, 0.12);
+}
+
+.series-tag-suggestions li + li {
+  margin-top: 2px;
+}
+
+.series-tag-suggestions button {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #3f5a4a;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 7px;
+}
+
+.series-tag-suggestions button:hover {
+  background: #eef3ed;
+}
+
+.series-tag-inline-btn {
+  border: 1px solid #ced8cd;
+  border-radius: 999px;
+  background: #eef3ed;
+  color: #4f6354;
+  cursor: pointer;
+  min-width: 24px;
+  height: 22px;
+  font-size: 11px;
+  padding: 0 7px;
 }
 
 .upload-panel {

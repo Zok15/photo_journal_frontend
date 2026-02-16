@@ -50,7 +50,7 @@ const availableTags = computed(() => {
 
   series.value.forEach((item) => {
     ;(item.tags || []).forEach((tag) => {
-      const name = String(tag?.name || '').trim().toLowerCase()
+      const name = String(tag?.name || '').trim()
       if (name) tags.add(name)
     })
   })
@@ -140,9 +140,10 @@ const filteredSeries = computed(() => {
     }
 
     const seriesTags = new Set((item.tags || []).map((tag) => String(tag?.name || '').trim().toLowerCase()).filter(Boolean))
+    const selectedNormalized = selectedTags.value.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean)
     const tagsMatch =
-      selectedTags.value.length === 0 ||
-      selectedTags.value.every((tag) => seriesTags.has(tag))
+      selectedNormalized.length === 0 ||
+      selectedNormalized.every((tag) => seriesTags.has(tag))
 
     return queryMatch && dateMatch && tagsMatch
   })
