@@ -40,17 +40,17 @@ async function logout() {
 
 <style scoped>
 .app-shell {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 24px;
-  font-family: Arial, sans-serif;
+  min-height: 100vh;
+  font-family: 'Manrope', 'Trebuchet MS', 'Verdana', sans-serif;
 }
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  padding: 12px 22px;
+  border-bottom: 1px solid #dadfd8;
+  background: #f3f4f1;
 }
 
 .app-nav {
@@ -61,9 +61,13 @@ async function logout() {
 
 .app-nav button {
   cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+  background: #dfe8df;
+  padding: 7px 10px;
 }
 
 .app-content {
-  min-height: 320px;
+  min-height: calc(100vh - 58px);
 }
 </style>

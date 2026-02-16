@@ -110,7 +110,7 @@ async function loadSeries() {
   try {
     const { data } = await api.get(`/series/${route.params.id}`, {
       params: {
-        include_photos: true,
+        include_photos: 1,
         photos_limit: 50,
       },
     })

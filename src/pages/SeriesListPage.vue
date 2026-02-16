@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
@@ -10,6 +10,10 @@ const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
 
+const search = ref('')
+const activePeriod = ref('week')
+const showCreateForm = ref(false)
+
 const createTitle = ref('')
 const createDescription = ref('')
 const createFiles = ref([])
@@ -19,6 +23,19 @@ const createError = ref('')
 const createWarnings = ref([])
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
+
+const filteredSeries = computed(() => {
+  const query = search.value.trim().toLowerCase()
+
+  if (!query) {
+    return series.value
+  }
+
+  return series.value.filter((item) => {
+    const haystack = `${item.title || ''} ${item.description || ''}`.toLowerCase()
+    return haystack.includes(query)
+  })
+})
 
 function onCreateFilesChanged(event) {
   const files = Array.from(event.target.files || [])
@@ -52,6 +69,39 @@ function formatValidationError(err) {
   }
 
   return `${fallback} ${lines.join(' ')}`
+}
+
+function formatDate(value) {
+  if (!value) {
+    return 'No date'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return 'No date'
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date)
+}
+
+function cardCoverStyle(id) {
+  const palettes = [
+    ['#8fb39b', '#d6e2cf', '#f0e8d8'],
+    ['#9fb4c6', '#dbe4e9', '#f5f1e8'],
+    ['#c3ab8a', '#e7ddc9', '#f5efe2'],
+    ['#8fa293', '#d5ddd0', '#edf2ea'],
+  ]
+
+  const index = Number(id || 0) % palettes.length
+  const [left, middle, right] = palettes[index]
+
+  return {
+    background: `linear-gradient(135deg, ${left} 0%, ${middle} 45%, ${right} 100%)`,
+  }
 }
 
 async function createSeries() {
@@ -104,6 +154,7 @@ async function createSeries() {
     createTitle.value = ''
     createDescription.value = ''
     createFiles.value = []
+    showCreateForm.value = false
 
     if (createFilesInput.value) {
       createFilesInput.value.value = ''
@@ -145,131 +196,452 @@ onMounted(() => {
 </script>
 
 <template>
-  <section>
-    <h1>Series</h1>
+  <div class="journal-page">
+    <div class="journal-shell">
+      <header class="journal-header">
+        <h1>Фото Дневник</h1>
 
-    <section class="card">
-      <h2>Create Series + Upload Photos</h2>
+        <div class="header-actions">
+          <button type="button" class="ghost-btn">▦</button>
+          <button type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
+            {{ showCreateForm ? 'Закрыть форму' : 'Новая серия' }}
+          </button>
+        </div>
+      </header>
 
-      <form class="form" @submit.prevent="createSeries">
-        <label>
-          Title
-          <input v-model="createTitle" type="text" maxlength="255" required />
-        </label>
+      <div class="journal-body">
+        <aside class="filters-panel">
+          <h2>Фильтры</h2>
 
-        <label>
-          Description
-          <textarea v-model="createDescription" rows="3"></textarea>
-        </label>
+          <section class="filter-group">
+            <h3>Дата</h3>
+            <div class="chip-row">
+              <button type="button" class="chip" :class="{ active: activePeriod === 'day' }" @click="activePeriod = 'day'">Сегодня</button>
+              <button type="button" class="chip" :class="{ active: activePeriod === 'week' }" @click="activePeriod = 'week'">Неделя</button>
+              <button type="button" class="chip" :class="{ active: activePeriod === 'month' }" @click="activePeriod = 'month'">Месяц</button>
+            </div>
+          </section>
 
-        <label>
-          Photos
-          <input
-            ref="createFilesInput"
-            name="photos[]"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-            multiple
-            @change="onCreateFilesChanged"
-          />
-        </label>
-        <small>Images are optimized for web before upload (target: up to 2MB per file).</small>
-        <small v-if="createFiles.length">Selected: {{ createFiles.length }} file(s)</small>
+          <section class="filter-group">
+            <h3>Теги</h3>
+            <div class="chip-row chips-wrap">
+              <span class="tag-chip">#birds</span>
+              <span class="tag-chip">#flowers</span>
+              <span class="tag-chip">#spring</span>
+            </div>
+          </section>
 
-        <p v-if="createError" class="error">{{ createError }}</p>
+          <section class="filter-group">
+            <h3>Сортировка</h3>
+            <div class="sort-box">Новые сверху</div>
+          </section>
+        </aside>
 
-        <ul v-if="createWarnings.length" class="warnings">
-          <li v-for="(warning, index) in createWarnings" :key="index">
-            {{ warning.original_name }}: {{ warning.message }}
-          </li>
-        </ul>
+        <main class="content-panel">
+          <section v-if="showCreateForm" class="create-card">
+            <h2>Новая серия</h2>
 
-        <button type="submit" :disabled="creating">
-          {{ creating ? 'Uploading...' : 'Create series' }}
-        </button>
-      </form>
-    </section>
+            <form class="form" @submit.prevent="createSeries">
+              <label>
+                Название
+                <input v-model="createTitle" type="text" maxlength="255" required />
+              </label>
 
-    <p v-if="loading">Loading...</p>
-    <p v-else-if="error" class="error">{{ error }}</p>
+              <label>
+                Описание
+                <textarea v-model="createDescription" rows="3"></textarea>
+              </label>
 
-    <table v-else class="table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Title</th>
-          <th>Description</th>
-          <th>Photos</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in series" :key="item.id">
-          <td>{{ item.id }}</td>
-          <td>{{ item.title }}</td>
-          <td>{{ item.description }}</td>
-          <td>{{ item.photos_count }}</td>
-          <td>
-            <RouterLink :to="`/series/${item.id}`">View</RouterLink>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+              <label>
+                Фотографии
+                <input
+                  ref="createFilesInput"
+                  name="photos[]"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  multiple
+                  @change="onCreateFilesChanged"
+                />
+              </label>
+              <small class="hint">Оптимизация перед отправкой: до 2MB на файл.</small>
+              <small class="hint" v-if="createFiles.length">Выбрано: {{ createFiles.length }} файл(ов)</small>
 
-    <div class="pager" v-if="!loading && !error">
-      <button type="button" :disabled="page <= 1" @click="loadSeries(page - 1)">Prev</button>
-      <span>Page {{ page }} / {{ lastPage }}</span>
-      <button type="button" :disabled="page >= lastPage" @click="loadSeries(page + 1)">Next</button>
+              <p v-if="createError" class="error">{{ createError }}</p>
+
+              <ul v-if="createWarnings.length" class="warnings">
+                <li v-for="(warning, index) in createWarnings" :key="index">
+                  {{ warning.original_name }}: {{ warning.message }}
+                </li>
+              </ul>
+
+              <button type="submit" class="primary-btn" :disabled="creating">
+                {{ creating ? 'Сохраняем...' : 'Создать серию' }}
+              </button>
+            </form>
+          </section>
+
+          <section class="search-row">
+            <input v-model="search" type="text" placeholder="Искать по названию и описанию..." />
+          </section>
+
+          <p v-if="loading" class="state-text">Загрузка...</p>
+          <p v-else-if="error" class="error">{{ error }}</p>
+          <p v-else-if="!filteredSeries.length" class="state-text">Серии не найдены.</p>
+
+          <div v-else class="series-grid">
+            <article v-for="item in filteredSeries" :key="item.id" class="series-card">
+              <header class="series-card-header">
+                <h3>{{ item.title }}</h3>
+                <RouterLink class="view-link" :to="`/series/${item.id}`">Открыть</RouterLink>
+              </header>
+
+              <div class="series-meta">
+                <span>{{ formatDate(item.created_at) }}</span>
+                <span>{{ item.photos_count }} фото</span>
+              </div>
+
+              <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
+
+              <div class="cover" :style="cardCoverStyle(item.id)"></div>
+
+              <div class="mini-grid">
+                <div class="mini-thumb" :style="cardCoverStyle(item.id + 1)"></div>
+                <div class="mini-thumb" :style="cardCoverStyle(item.id + 2)"></div>
+                <div class="mini-thumb" :style="cardCoverStyle(item.id + 3)"></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="pager" v-if="!loading && !error && lastPage > 1">
+            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="loadSeries(page - 1)">Назад</button>
+            <span>Страница {{ page }} / {{ lastPage }}</span>
+            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="loadSeries(page + 1)">Вперёд</button>
+          </div>
+        </main>
+      </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #ddd;
+.journal-page {
+  --bg: #e8e9e6;
+  --panel: #f4f5f2;
+  --line: #dde0d9;
+  --text: #313a35;
+  --muted: #748077;
+  --accent: #5d9776;
+  --accent-soft: #ddeee4;
+  --chip: #edf1ec;
+  min-height: calc(100vh - 72px);
+  padding: 24px 8px 36px;
+  background:
+    radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
+    radial-gradient(860px 260px at 100% 15%, rgba(218, 206, 188, 0.28), transparent 70%),
+    var(--bg);
+  color: var(--text);
+  font-family: 'Manrope', 'Trebuchet MS', 'Verdana', sans-serif;
+}
+
+.journal-shell {
+  max-width: 1260px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 20px 40px rgba(79, 86, 80, 0.1);
+  overflow: hidden;
+}
+
+.journal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.journal-header h1 {
+  margin: 0;
+  font-size: 36px;
+  letter-spacing: -0.03em;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.journal-body {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+}
+
+.filters-panel {
+  border-right: 1px solid var(--line);
+  padding: 20px;
+}
+
+.filters-panel h2 {
+  margin: 0 0 20px;
+  font-size: 28px;
+}
+
+.filter-group {
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.filter-group h3 {
+  margin: 0 0 10px;
+  font-size: 19px;
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+}
+
+.chips-wrap {
+  flex-wrap: wrap;
+}
+
+.chip,
+.tag-chip,
+.sort-box {
+  border: 0;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
+  background: var(--chip);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.chip {
+  cursor: pointer;
+}
+
+.chip.active {
+  background: var(--accent-soft);
+  color: #3f6d56;
+}
+
+.content-panel {
+  padding: 20px;
+}
+
+.create-card {
+  background: #fbfcfa;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.create-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
 }
 
 .form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .form input,
 .form textarea {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px;
+  margin-top: 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.search-row {
+  margin-bottom: 14px;
+}
+
+.search-row input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f9faf8;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+
+.series-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.series-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfa;
+  padding: 14px;
+  transition: transform 0.2s ease;
+}
+
+.series-card:hover {
+  transform: translateY(-2px);
+}
+
+.series-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.series-card h3 {
+  margin: 0;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.view-link {
+  color: #3f6d56;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.view-link:hover {
+  text-decoration: underline;
+}
+
+.series-meta {
+  margin-top: 7px;
+  display: flex;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.series-desc {
+  margin: 12px 0;
+  color: #4b574f;
+  font-size: 18px;
+}
+
+.cover {
+  height: 200px;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 134, 128, 0.25);
+}
+
+.mini-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mini-thumb {
+  height: 78px;
+  border-radius: 8px;
+  border: 1px solid rgba(125, 134, 128, 0.25);
+}
+
+.pager {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hint {
+  color: var(--muted);
 }
 
 .error {
-  color: #b91c1c;
+  color: #9f2f2f;
 }
 
 .warnings {
   margin: 0;
-  padding-left: 18px;
-  color: #92400e;
+  padding-left: 16px;
+  color: #87520b;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
+.state-text {
+  color: var(--muted);
 }
 
-.table th,
-.table td {
-  border: 1px solid #ddd;
-  padding: 8px;
-  text-align: left;
+.primary-btn,
+.ghost-btn {
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 10px 14px;
 }
 
-.pager {
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
+.primary-btn {
+  background: var(--accent);
+  color: #eff7f2;
+}
+
+.primary-btn:hover {
+  background: #4f8366;
+}
+
+.primary-btn:disabled,
+.ghost-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghost-btn {
+  background: var(--chip);
+  color: var(--text);
+}
+
+@media (max-width: 1100px) {
+  .journal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 720px) {
+  .journal-page {
+    padding: 12px 0 20px;
+  }
+
+  .journal-shell {
+    border-radius: 0;
+  }
+
+  .journal-header {
+    padding: 14px;
+    align-items: start;
+    gap: 12px;
+    flex-direction: column;
+  }
+
+  .journal-header h1 {
+    font-size: 30px;
+  }
+
+  .series-card h3 {
+    font-size: 30px;
+  }
+
+  .cover {
+    height: 164px;
+  }
+
+  .mini-thumb {
+    height: 66px;
+  }
 }
 </style>
