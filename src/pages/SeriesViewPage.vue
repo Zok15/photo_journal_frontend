@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
@@ -16,12 +16,17 @@ const uploading = ref(false)
 const uploadError = ref('')
 const uploadWarnings = ref([])
 
+const selectedPhoto = ref(null)
+const zoomPercent = ref(100)
+const previewNaturalWidth = ref(0)
+const previewNaturalHeight = ref(0)
+const viewportWidth = ref(window.innerWidth)
+const viewportHeight = ref(window.innerHeight)
+
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
 const photoList = computed(() => item.value?.photos || [])
-const heroPhoto = computed(() => photoList.value[0] || null)
-const gridPhotos = computed(() => photoList.value.slice(1))
 
 function apiOrigin() {
   const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
@@ -34,6 +39,10 @@ function photoUrl(path) {
   }
 
   return `${apiOrigin()}/storage/${path}`
+}
+
+function resolvedPhotoUrl(photo) {
+  return photo?.preview_url || photoUrl(photo?.path)
 }
 
 function formatDate(value) {
@@ -101,6 +110,68 @@ function formatValidationError(err) {
   }
 
   return `${fallback} ${lines.join(' ')}`
+}
+
+function openPreview(photo) {
+  selectedPhoto.value = photo
+  zoomPercent.value = 100
+  previewNaturalWidth.value = 0
+  previewNaturalHeight.value = 0
+}
+
+function closePreview() {
+  selectedPhoto.value = null
+  zoomPercent.value = 100
+  previewNaturalWidth.value = 0
+  previewNaturalHeight.value = 0
+}
+
+function zoomIn() {
+  zoomPercent.value = Math.min(300, zoomPercent.value + 10)
+}
+
+function zoomOut() {
+  zoomPercent.value = Math.max(50, zoomPercent.value - 10)
+}
+
+function onPreviewImageLoad(event) {
+  previewNaturalWidth.value = event.target?.naturalWidth || 0
+  previewNaturalHeight.value = event.target?.naturalHeight || 0
+}
+
+function syncViewport() {
+  viewportWidth.value = window.innerWidth
+  viewportHeight.value = window.innerHeight
+}
+
+const previewImageStyle = computed(() => {
+  if (!previewNaturalWidth.value || !previewNaturalHeight.value) {
+    return {}
+  }
+
+  const maxWidth = Math.min(viewportWidth.value * 0.88, 1400)
+  const maxHeight = Math.max(200, viewportHeight.value - 72)
+  const fitScale = Math.min(
+    maxWidth / previewNaturalWidth.value,
+    maxHeight / previewNaturalHeight.value,
+    1
+  )
+  const zoomScale = zoomPercent.value / 100
+  const finalWidth = Math.round(previewNaturalWidth.value * fitScale * zoomScale)
+  const finalHeight = Math.round(previewNaturalHeight.value * fitScale * zoomScale)
+
+  return {
+    width: `${Math.max(1, finalWidth)}px`,
+    height: `${Math.max(1, finalHeight)}px`,
+    maxWidth: 'none',
+    maxHeight: 'none',
+  }
+})
+
+function onKeydown(event) {
+  if (event.key === 'Escape' && selectedPhoto.value) {
+    closePreview()
+  }
 }
 
 async function uploadPhotos() {
@@ -174,8 +245,21 @@ async function loadSeries() {
   }
 }
 
-onMounted(loadSeries)
-watch(() => route.params.id, loadSeries)
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', syncViewport)
+  loadSeries()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', syncViewport)
+})
+
+watch(() => route.params.id, () => {
+  closePreview()
+  loadSeries()
+})
 </script>
 
 <template>
@@ -226,17 +310,9 @@ watch(() => route.params.id, loadSeries)
           </form>
         </section>
 
-        <section v-if="heroPhoto" class="hero-block">
-          <img class="hero-image" :src="photoUrl(heroPhoto.path)" :alt="heroPhoto.original_name || 'photo'" />
-          <div class="hero-caption">
-            <strong>{{ heroPhoto.original_name || 'Фото' }}</strong>
-            <span>{{ heroPhoto.mime }} · {{ formatSize(heroPhoto.size) }}</span>
-          </div>
-        </section>
-
-        <section class="photo-grid" v-if="gridPhotos.length">
-          <article v-for="photo in gridPhotos" :key="photo.id" class="photo-card">
-            <img class="thumb" :src="photoUrl(photo.path)" :alt="photo.original_name || 'photo'" />
+        <section class="photo-grid" v-if="photoList.length">
+          <article v-for="photo in photoList" :key="photo.id" class="photo-card" @click="openPreview(photo)">
+            <img class="thumb" :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
             <div class="thumb-meta">
               <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
               <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
@@ -244,8 +320,33 @@ watch(() => route.params.id, loadSeries)
           </article>
         </section>
 
-        <p v-else-if="!heroPhoto" class="state-text">В этой серии пока нет фото.</p>
+        <p v-else class="state-text">В этой серии пока нет фото.</p>
       </template>
+    </div>
+
+    <div v-if="selectedPhoto" class="preview-overlay" @click.self="closePreview">
+      <div class="preview-shell">
+        <div class="preview-toolbar">
+          <div class="preview-actions">
+            <button type="button" class="preview-btn" @click="zoomOut">-</button>
+            <span class="zoom-value">{{ zoomPercent }}%</span>
+            <button type="button" class="preview-btn" @click="zoomIn">+</button>
+            <button type="button" class="preview-btn preview-btn-close" @click="closePreview">×</button>
+          </div>
+        </div>
+
+        <div class="preview-stage">
+          <div class="preview-inner">
+            <img
+              class="preview-image"
+              :src="resolvedPhotoUrl(selectedPhoto)"
+              :alt="selectedPhoto.original_name || 'photo'"
+              :style="previewImageStyle"
+              @load="onPreviewImageLoad"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -268,7 +369,7 @@ watch(() => route.params.id, loadSeries)
 }
 
 .series-shell {
-  max-width: 1080px;
+  max-width: 1360px;
   margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -331,37 +432,9 @@ watch(() => route.params.id, loadSeries)
   color: var(--muted);
 }
 
-.hero-block {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow: hidden;
-  background: #fcfdfb;
-  margin-bottom: 14px;
-}
-
-.hero-image {
-  display: block;
-  width: 100%;
-  height: 360px;
-  object-fit: cover;
-  background: linear-gradient(135deg, #9fb4c6 0%, #dbe4e9 45%, #f5f1e8 100%);
-}
-
-.hero-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
-}
-
-.hero-caption span {
-  color: var(--muted);
-}
-
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -370,13 +443,14 @@ watch(() => route.params.id, loadSeries)
   border-radius: 10px;
   overflow: hidden;
   background: #fcfdfb;
+  cursor: zoom-in;
 }
 
 .thumb {
   display: block;
   width: 100%;
-  height: 170px;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
   background: linear-gradient(135deg, #8fb39b 0%, #d6e2cf 45%, #f0e8d8 100%);
 }
 
@@ -389,6 +463,99 @@ watch(() => route.params.id, loadSeries)
 
 .thumb-meta span {
   color: var(--muted);
+}
+
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(25, 31, 27, 0.84);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 20px;
+}
+
+.preview-shell {
+  position: relative;
+  width: min(92vw, 1400px);
+  height: calc(100vh - 40px);
+  border-radius: 12px;
+  border: 1px solid #56645a;
+  background: #222924;
+  overflow: hidden;
+}
+
+.preview-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  height: 40px;
+  background: #1e2621;
+  border: 1px solid #445247;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preview-btn {
+  border: 0;
+  border-radius: 7px;
+  min-height: 28px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #eef4ef;
+  background: rgba(49, 65, 56, 0.86);
+  padding: 4px 9px;
+}
+
+.preview-btn:hover {
+  background: rgba(78, 101, 88, 0.92);
+}
+
+.zoom-value {
+  color: #eef4ef;
+  font-weight: 700;
+  min-width: 52px;
+  text-align: center;
+}
+
+.preview-btn-close {
+  min-width: 30px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.preview-stage {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+}
+
+.preview-inner {
+  min-width: 100%;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(88vw, 1400px);
+  max-height: calc(100vh - 72px);
+  object-fit: contain;
 }
 
 .primary-btn {
@@ -425,17 +592,15 @@ watch(() => route.params.id, loadSeries)
   color: var(--muted);
 }
 
-@media (max-width: 960px) {
-  .series-header h1 {
-    font-size: 38px;
-  }
-
-  .hero-image {
-    height: 280px;
-  }
-
+@media (min-width: 1200px) {
   .photo-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1550px) {
+  .photo-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -457,12 +622,21 @@ watch(() => route.params.id, loadSeries)
     font-size: 17px;
   }
 
-  .hero-image {
-    height: 220px;
-  }
-
   .photo-grid {
     grid-template-columns: 1fr;
+  }
+
+  .thumb {
+    height: auto;
+  }
+
+  .preview-actions {
+    gap: 6px;
+  }
+
+  .preview-toolbar {
+    top: 8px;
+    right: 8px;
   }
 }
 </style>

@@ -9,6 +9,7 @@ const loading = ref(true)
 const error = ref('')
 const page = ref(1)
 const lastPage = ref(1)
+const seriesPreviews = ref({})
 
 const search = ref('')
 const activePeriod = ref('week')
@@ -88,20 +89,53 @@ function formatDate(value) {
   }).format(date)
 }
 
-function cardCoverStyle(id) {
-  const palettes = [
-    ['#8fb39b', '#d6e2cf', '#f0e8d8'],
-    ['#9fb4c6', '#dbe4e9', '#f5f1e8'],
-    ['#c3ab8a', '#e7ddc9', '#f5efe2'],
-    ['#8fa293', '#d5ddd0', '#edf2ea'],
-  ]
+function apiOrigin() {
+  const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
+  return base.replace(/\/api\/v1\/?$/, '')
+}
 
-  const index = Number(id || 0) % palettes.length
-  const [left, middle, right] = palettes[index]
-
-  return {
-    background: `linear-gradient(135deg, ${left} 0%, ${middle} 45%, ${right} 100%)`,
+function photoUrl(path) {
+  if (!path) {
+    return ''
   }
+
+  return `${apiOrigin()}/storage/${path}`
+}
+
+function previewTiles(seriesId) {
+  return seriesPreviews.value[seriesId] || []
+}
+
+async function loadSeriesPreviews(items) {
+  if (!items.length) {
+    seriesPreviews.value = {}
+    return
+  }
+
+  const entries = await Promise.all(items.map(async (entry) => {
+    try {
+      const { data } = await api.get(`/series/${entry.id}`, {
+        params: {
+          include_photos: 1,
+          photos_limit: 4,
+        },
+      })
+
+      const photos = (data?.data?.photos || [])
+        .map((photo) => ({
+          id: photo.id,
+          src: photo.preview_url || photoUrl(photo.path),
+          alt: photo.original_name || `photo-${photo.id}`,
+        }))
+        .filter((photo) => photo.src)
+
+      return [entry.id, photos]
+    } catch (_) {
+      return [entry.id, []]
+    }
+  }))
+
+  seriesPreviews.value = Object.fromEntries(entries)
 }
 
 async function createSeries() {
@@ -183,6 +217,7 @@ async function loadSeries(targetPage = 1) {
     series.value = data.data || []
     page.value = data.current_page || targetPage
     lastPage.value = data.last_page || 1
+    await loadSeriesPreviews(series.value)
   } catch (e) {
     error.value = e?.response?.data?.message || 'Failed to load series.'
   } finally {
@@ -302,12 +337,14 @@ onMounted(() => {
 
               <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
 
-              <div class="cover" :style="cardCoverStyle(item.id)"></div>
-
-              <div class="mini-grid">
-                <div class="mini-thumb" :style="cardCoverStyle(item.id + 1)"></div>
-                <div class="mini-thumb" :style="cardCoverStyle(item.id + 2)"></div>
-                <div class="mini-thumb" :style="cardCoverStyle(item.id + 3)"></div>
+              <div v-if="previewTiles(item.id).length" class="preview-grid">
+                <img
+                  v-for="slot in previewTiles(item.id)"
+                  :key="slot.id"
+                  class="preview-tile-image"
+                  :src="slot.src"
+                  :alt="slot.alt"
+                />
               </div>
             </article>
           </div>
@@ -528,23 +565,20 @@ onMounted(() => {
   font-size: 18px;
 }
 
-.cover {
-  height: 200px;
-  border-radius: 10px;
-  border: 1px solid rgba(125, 134, 128, 0.25);
-}
-
-.mini-grid {
+.preview-grid {
   margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.mini-thumb {
-  height: 78px;
+.preview-tile-image {
+  width: min(100%, 350px);
+  height: 220px;
   border-radius: 8px;
   border: 1px solid rgba(125, 134, 128, 0.25);
+  object-fit: contain;
+  background: #eef2ec;
 }
 
 .pager {
@@ -636,12 +670,9 @@ onMounted(() => {
     font-size: 30px;
   }
 
-  .cover {
-    height: 164px;
+  .preview-tile-image {
+    height: 180px;
   }
 
-  .mini-thumb {
-    height: 66px;
-  }
 }
 </style>
