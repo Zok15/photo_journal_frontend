@@ -1,4 +1,4 @@
-const TARGET_MIME = 'image/webp'
+const TARGET_MIME = 'image/jpeg'
 
 function replaceExtension(fileName, extension) {
   const idx = fileName.lastIndexOf('.')
@@ -113,7 +113,7 @@ export async function optimizeImagesForUpload(files, options = {}) {
         continue
       }
 
-      const nextFile = new File([blob], replaceExtension(file.name, 'webp'), {
+      const nextFile = new File([blob], replaceExtension(file.name, 'jpg'), {
         type: TARGET_MIME,
         lastModified: Date.now(),
       })
