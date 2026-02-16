@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 
 const route = useRoute()
+const router = useRouter()
 
 const item = ref(null)
 const loading = ref(true)
@@ -22,6 +23,13 @@ const editTitle = ref('')
 const editDescription = ref('')
 const editError = ref('')
 const savingSeries = ref(false)
+const showDeleteSeriesModal = ref(false)
+const deletingSeries = ref(false)
+const deleteSeriesError = ref('')
+const showDeletePhotoModal = ref(false)
+const photoToDelete = ref(null)
+const deletingPhoto = ref(false)
+const deletePhotoError = ref('')
 
 const selectedPhoto = ref(null)
 const zoomPercent = ref(100)
@@ -221,6 +229,16 @@ const previewImageStyle = computed(() => {
 })
 
 function onKeydown(event) {
+  if (event.key === 'Escape' && showDeletePhotoModal.value) {
+    closeDeletePhotoModal()
+    return
+  }
+
+  if (event.key === 'Escape' && showDeleteSeriesModal.value) {
+    closeDeleteSeriesModal()
+    return
+  }
+
   if (event.key === 'Escape' && selectedPhoto.value) {
     closePreview()
   }
@@ -258,6 +276,54 @@ function onPreviewMouseMove(event) {
 
 function stopPreviewDrag() {
   isDraggingPreview.value = false
+}
+
+function openDeleteSeriesModal() {
+  showDeleteSeriesModal.value = true
+  deleteSeriesError.value = ''
+}
+
+function closeDeleteSeriesModal() {
+  if (deletingSeries.value) {
+    return
+  }
+
+  showDeleteSeriesModal.value = false
+  deleteSeriesError.value = ''
+}
+
+function openDeletePhotoModal(photo) {
+  if (!photo) return
+  photoToDelete.value = photo
+  showDeletePhotoModal.value = true
+  deletePhotoError.value = ''
+}
+
+function closeDeletePhotoModal() {
+  if (deletingPhoto.value) {
+    return
+  }
+
+  photoToDelete.value = null
+  showDeletePhotoModal.value = false
+  deletePhotoError.value = ''
+}
+
+async function deleteSeries() {
+  if (!item.value) return
+
+  deletingSeries.value = true
+  deleteSeriesError.value = ''
+
+  try {
+    await api.delete(`/series/${item.value.id}`)
+    showDeleteSeriesModal.value = false
+    await router.push('/series')
+  } catch (e) {
+    deleteSeriesError.value = e?.response?.data?.message || 'Не удалось удалить серию.'
+  } finally {
+    deletingSeries.value = false
+  }
 }
 
 async function uploadPhotos() {
@@ -314,20 +380,28 @@ async function uploadPhotos() {
 
 async function deletePhoto(photo) {
   if (!item.value || !photo) return
+  openDeletePhotoModal(photo)
+}
 
-  const confirmed = window.confirm(`Удалить фото "${photo.original_name || photo.id}"?`)
-  if (!confirmed) return
+async function confirmDeletePhoto() {
+  if (!item.value || !photoToDelete.value) return
+
+  deletingPhoto.value = true
+  deletePhotoError.value = ''
 
   try {
-    await api.delete(`/series/${item.value.id}/photos/${photo.id}`)
+    await api.delete(`/series/${item.value.id}/photos/${photoToDelete.value.id}`)
 
-    if (selectedPhoto.value?.id === photo.id) {
+    if (selectedPhoto.value?.id === photoToDelete.value.id) {
       closePreview()
     }
 
+    closeDeletePhotoModal()
     await loadSeries()
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Не удалось удалить фото.'
+    deletePhotoError.value = e?.response?.data?.message || 'Не удалось удалить фото.'
+  } finally {
+    deletingPhoto.value = false
   }
 }
 
@@ -416,6 +490,9 @@ watch(() => route.params.id, () => {
             </button>
             <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" title="Редактировать">
               ✎
+            </button>
+            <button type="button" class="danger-btn icon-btn" @click="openDeleteSeriesModal" title="Удалить серию">
+              🗑
             </button>
           </div>
         </header>
@@ -524,6 +601,49 @@ watch(() => route.params.id, () => {
               @load="onPreviewImageLoad"
             />
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
+      <div class="confirm-modal">
+        <h2>Удалить серию?</h2>
+        <p>
+          Серия <strong>{{ item?.title || 'Без названия' }}</strong> будет удалена без возможности
+          восстановления.
+        </p>
+
+        <p v-if="deleteSeriesError" class="error">{{ deleteSeriesError }}</p>
+
+        <div class="confirm-actions">
+          <button type="button" class="danger-btn" :disabled="deletingSeries" @click="deleteSeries">
+            {{ deletingSeries ? 'Удаляем...' : 'Удалить навсегда' }}
+          </button>
+          <button type="button" class="ghost-btn" :disabled="deletingSeries" @click="closeDeleteSeriesModal">
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showDeletePhotoModal" class="confirm-overlay" @click.self="closeDeletePhotoModal">
+      <div class="confirm-modal">
+        <h2>Удалить фото?</h2>
+        <p>
+          Фото
+          <strong>{{ photoToDelete?.original_name || `#${photoToDelete?.id || ''}` }}</strong>
+          будет удалено без возможности восстановления.
+        </p>
+
+        <p v-if="deletePhotoError" class="error">{{ deletePhotoError }}</p>
+
+        <div class="confirm-actions">
+          <button type="button" class="danger-btn" :disabled="deletingPhoto" @click="confirmDeletePhoto">
+            {{ deletingPhoto ? 'Удаляем...' : 'Удалить навсегда' }}
+          </button>
+          <button type="button" class="ghost-btn" :disabled="deletingPhoto" @click="closeDeletePhotoModal">
+            Отмена
+          </button>
         </div>
       </div>
     </div>
@@ -712,6 +832,49 @@ watch(() => route.params.id, () => {
   padding: 20px;
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 31, 28, 0.65);
+  display: grid;
+  place-items: center;
+  z-index: 70;
+  padding: 16px;
+}
+
+.confirm-modal {
+  width: min(520px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f9faf7;
+  padding: 16px;
+  box-shadow: 0 22px 46px rgba(44, 54, 47, 0.25);
+}
+
+.confirm-modal h2 {
+  margin: 0 0 8px;
+}
+
+.confirm-modal p {
+  margin: 0 0 8px;
+}
+
+.confirm-modal input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 11px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .preview-shell {
   position: relative;
   width: min(92vw, 1400px);
@@ -833,6 +996,25 @@ watch(() => route.params.id, () => {
 
 .ghost-btn:hover {
   background: #e3eae2;
+}
+
+.danger-btn {
+  border: 1px solid #bc7a7a;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: #f8e9e9;
+  color: #7a1e1e;
+}
+
+.danger-btn:hover {
+  background: #f1dede;
+}
+
+.danger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .icon-btn {
