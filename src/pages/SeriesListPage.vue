@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
@@ -12,6 +12,10 @@ const page = ref(1)
 const lastPage = ref(1)
 const seriesPreviews = ref({})
 const currentUser = ref(getUser())
+const previewGridWidths = ref({})
+const previewAspectRatios = ref({})
+const previewGridElements = new Map()
+let previewResizeObserver = null
 
 const search = ref('')
 const activeSort = ref('new')
@@ -221,6 +225,159 @@ function previewTiles(seriesId) {
   return seriesPreviews.value[seriesId] || []
 }
 
+function setPreviewGridRef(seriesId, element) {
+  const previous = previewGridElements.get(seriesId)
+  if (previous && previous !== element && previewResizeObserver) {
+    previewResizeObserver.unobserve(previous)
+  }
+
+  if (!element) {
+    previewGridElements.delete(seriesId)
+    delete previewGridWidths.value[seriesId]
+    return
+  }
+
+  previewGridElements.set(seriesId, element)
+  previewGridWidths.value[seriesId] = element.clientWidth || 0
+  if (previewResizeObserver) {
+    previewResizeObserver.observe(element)
+  }
+}
+
+async function ensurePreviewRatio(photo) {
+  if (!photo?.id || !photo?.src || previewAspectRatios.value[photo.id]) {
+    return
+  }
+
+  try {
+    const ratio = await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => {
+        if (!image.naturalWidth || !image.naturalHeight) {
+          resolve(1)
+          return
+        }
+
+        resolve(image.naturalWidth / image.naturalHeight)
+      }
+      image.onerror = reject
+      image.src = photo.src
+    })
+
+    previewAspectRatios.value = {
+      ...previewAspectRatios.value,
+      [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
+    }
+  } catch (_) {
+    previewAspectRatios.value = {
+      ...previewAspectRatios.value,
+      [photo.id]: 1,
+    }
+  }
+}
+
+function buildPreviewRows(photos, containerWidth) {
+  const previewGap = 8
+  const minPerRow = 2
+  const maxPerRow = 5
+  const items = photos.map((photo) => ({
+    photo,
+    ratio: previewAspectRatios.value[photo.id] || 1,
+  }))
+
+  if (!items.length) {
+    return { height: 0, rows: [] }
+  }
+
+  if (items.length === 1) {
+    const ratio = items[0].ratio || 1
+    const height = Math.max(120, Math.min(240, containerWidth / ratio))
+    return {
+      height,
+      rows: [{ gap: 0, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
+    }
+  }
+
+  const minRows = Math.ceil(items.length / maxPerRow)
+  const maxRows = Math.floor(items.length / minPerRow)
+  let best = null
+
+  for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
+    const base = Math.floor(items.length / rowsCount)
+    const extra = items.length % rowsCount
+    const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
+
+    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
+      continue
+    }
+
+    const ratiosByRow = []
+    let cursor = 0
+    for (const count of counts) {
+      const chunk = items.slice(cursor, cursor + count)
+      cursor += count
+      ratiosByRow.push(chunk.reduce((sum, item) => sum + item.ratio, 0))
+    }
+
+    const rowHeights = ratiosByRow.map((ratioSum, index) => {
+      const rowWidth = containerWidth - previewGap * (counts[index] - 1)
+      return rowWidth / ratioSum
+    })
+    const maxAllowedHeight = Math.min(...rowHeights)
+    const averageHeight = rowHeights.reduce((sum, value) => sum + value, 0) / rowHeights.length
+    const height = Math.max(96, Math.min(260, averageHeight, maxAllowedHeight))
+
+    const rows = []
+    cursor = 0
+    let emptySpace = 0
+
+    for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
+      const count = counts[rowIndex]
+      const chunk = items.slice(cursor, cursor + count)
+      cursor += count
+      const widths = chunk.map((item) => item.ratio * height)
+      const used = widths.reduce((sum, width) => sum + width, 0) + previewGap * (count - 1)
+      emptySpace += Math.max(0, containerWidth - used)
+      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
+      const dynamicGap = count > 1 ? Math.max(0, (containerWidth - rowTotalWidth) / (count - 1)) : 0
+
+      rows.push(
+        {
+          gap: dynamicGap,
+          tiles: chunk.map((item) => ({
+            photo: item.photo,
+            width: item.ratio * height,
+          })),
+        }
+      )
+    }
+
+    const score = emptySpace + Math.abs(170 - height) * 3
+    if (!best || score < best.score) {
+      best = { score, height, rows }
+    }
+  }
+
+  if (!best) {
+    const height = 160
+    return {
+      height,
+      rows: [{
+        gap: 0,
+        tiles: items.map((item) => ({ photo: item.photo, width: item.ratio * height })),
+      }],
+    }
+  }
+
+  return { height: best.height, rows: best.rows }
+}
+
+function previewRows(seriesId) {
+  const photos = previewTiles(seriesId)
+  const width = previewGridWidths.value[seriesId] || 920
+  return buildPreviewRows(photos, width)
+}
+
 function toggleTag(tag) {
   if (selectedTags.value.includes(tag)) {
     selectedTags.value = selectedTags.value.filter((item) => item !== tag)
@@ -375,6 +532,8 @@ async function loadSeriesPreviews(items) {
   }))
 
   seriesPreviews.value = Object.fromEntries(entries)
+  const photos = Object.values(seriesPreviews.value).flat()
+  await Promise.all(photos.map((photo) => ensurePreviewRatio(photo)))
 }
 
 async function createSeries() {
@@ -481,8 +640,31 @@ async function loadProfileMeta() {
 }
 
 onMounted(() => {
+  previewResizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const matched = Array.from(previewGridElements.entries()).find(([, element]) => element === entry.target)
+      if (!matched) {
+        continue
+      }
+
+      const [seriesId] = matched
+      previewGridWidths.value = {
+        ...previewGridWidths.value,
+        [seriesId]: entry.contentRect.width,
+      }
+    }
+  })
+
   loadSeries(1)
   loadProfileMeta()
+})
+
+onBeforeUnmount(() => {
+  if (previewResizeObserver) {
+    previewResizeObserver.disconnect()
+    previewResizeObserver = null
+  }
+  previewGridElements.clear()
 })
 </script>
 
@@ -671,14 +853,30 @@ onMounted(() => {
 
               <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
 
-              <div v-if="previewTiles(item.id).length" class="preview-grid">
-                <img
-                  v-for="slot in previewTiles(item.id)"
-                  :key="slot.id"
-                  class="preview-tile-image"
-                  :src="slot.src"
-                  :alt="slot.alt"
-                />
+              <div
+                v-if="previewTiles(item.id).length"
+                :ref="(element) => setPreviewGridRef(item.id, element)"
+                class="preview-grid"
+              >
+                <div
+                  v-for="(row, rowIndex) in previewRows(item.id).rows"
+                  :key="`${item.id}-${rowIndex}`"
+                  class="preview-row"
+                  :style="{ columnGap: `${row.gap}px` }"
+                >
+                  <div
+                    v-for="tile in row.tiles"
+                    :key="tile.photo.id"
+                    class="preview-tile"
+                    :style="{ width: `${tile.width}px`, height: `${previewRows(item.id).height}px` }"
+                  >
+                    <img
+                      class="preview-tile-image"
+                      :src="tile.photo.src"
+                      :alt="tile.photo.alt"
+                    />
+                  </div>
+                </div>
               </div>
             </article>
           </div>
@@ -1032,17 +1230,29 @@ onMounted(() => {
   margin-top: 10px;
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
+}
+
+.preview-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  width: 100%;
+}
+
+.preview-tile {
+  flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .preview-tile-image {
   width: 100%;
-  height: 220px;
+  height: 100%;
+  display: block;
   border-radius: 8px;
   border: 1px solid rgba(125, 134, 128, 0.25);
-  object-fit: contain;
   background: #eef2ec;
+  object-fit: contain;
 }
 
 .pager {
@@ -1132,10 +1342,6 @@ onMounted(() => {
 
   .series-card h3 {
     font-size: 30px;
-  }
-
-  .preview-tile-image {
-    height: 180px;
   }
 
 }
