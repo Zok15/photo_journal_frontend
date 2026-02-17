@@ -39,8 +39,24 @@ const rangeFromText = ref('')
 const rangeToText = ref('')
 const nativeFromInput = ref(null)
 const nativeToInput = ref(null)
+const calendarPickerRoot = ref(null)
+const calendarPickerMode = ref(null)
 const showCreateForm = ref(false)
 const calendarMonthCursor = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+const calendarMonthOptions = [
+  { value: 0, label: 'Январь' },
+  { value: 1, label: 'Февраль' },
+  { value: 2, label: 'Март' },
+  { value: 3, label: 'Апрель' },
+  { value: 4, label: 'Май' },
+  { value: 5, label: 'Июнь' },
+  { value: 6, label: 'Июль' },
+  { value: 7, label: 'Август' },
+  { value: 8, label: 'Сентябрь' },
+  { value: 9, label: 'Октябрь' },
+  { value: 10, label: 'Ноябрь' },
+  { value: 11, label: 'Декабрь' },
+]
 
 const createTitle = ref('')
 const createDescription = ref('')
@@ -121,9 +137,47 @@ function toLocalDateKey(input) {
 
 const seriesDateKeys = computed(() => new Set(calendarMarkedDateKeys.value))
 
-const calendarMonthLabel = computed(() =>
-  new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(calendarMonthCursor.value)
+const calendarMonthText = computed(() =>
+  new Intl.DateTimeFormat('ru-RU', { month: 'long' }).format(calendarMonthCursor.value)
 )
+const calendarYearText = computed(() => String(calendarMonthCursor.value.getFullYear()))
+
+const selectedCalendarMonth = computed({
+  get: () => calendarMonthCursor.value.getMonth(),
+  set: (nextMonth) => {
+    if (!Number.isFinite(nextMonth)) return
+    const month = Math.min(11, Math.max(0, Math.trunc(nextMonth)))
+    const year = calendarMonthCursor.value.getFullYear()
+    calendarMonthCursor.value = new Date(year, month, 1)
+  },
+})
+
+const selectedCalendarYear = computed({
+  get: () => calendarMonthCursor.value.getFullYear(),
+  set: (nextYear) => {
+    if (!Number.isFinite(nextYear)) return
+    const year = Math.trunc(nextYear)
+    const month = calendarMonthCursor.value.getMonth()
+    calendarMonthCursor.value = new Date(year, month, 1)
+  },
+})
+
+const calendarYearOptions = computed(() => {
+  const years = new Set([new Date().getFullYear(), selectedCalendarYear.value])
+
+  for (let year = selectedCalendarYear.value - 6; year <= selectedCalendarYear.value + 2; year += 1) {
+    years.add(year)
+  }
+
+  calendarMarkedDateKeys.value.forEach((iso) => {
+    const year = Number.parseInt(String(iso || '').slice(0, 4), 10)
+    if (Number.isFinite(year)) {
+      years.add(year)
+    }
+  })
+
+  return Array.from(years).sort((a, b) => a - b)
+})
 
 const calendarCells = computed(() => {
   const cursor = calendarMonthCursor.value
@@ -558,6 +612,40 @@ function collapseTagRows() {
 function shiftCalendarMonth(offset) {
   const current = calendarMonthCursor.value
   calendarMonthCursor.value = new Date(current.getFullYear(), current.getMonth() + offset, 1)
+  calendarPickerMode.value = null
+}
+
+function toggleCalendarPicker(kind) {
+  calendarPickerMode.value = calendarPickerMode.value === kind ? null : kind
+}
+
+function selectCalendarMonth(month) {
+  selectedCalendarMonth.value = month
+  calendarPickerMode.value = null
+}
+
+function selectCalendarYear(year) {
+  selectedCalendarYear.value = year
+  calendarPickerMode.value = null
+}
+
+function closeCalendarPicker() {
+  calendarPickerMode.value = null
+}
+
+function onGlobalPointerDown(event) {
+  const root = calendarPickerRoot.value
+  if (!root) return
+
+  if (!root.contains(event.target)) {
+    closeCalendarPicker()
+  }
+}
+
+function onGlobalKeyDown(event) {
+  if (event.key === 'Escape') {
+    closeCalendarPicker()
+  }
 }
 
 function pickCalendarDate(iso) {
@@ -904,6 +992,9 @@ onMounted(() => {
     tagsLayoutObserver.observe(tagsCloudRef.value)
   }
 
+  window.addEventListener('pointerdown', onGlobalPointerDown)
+  window.addEventListener('keydown', onGlobalKeyDown)
+
   applyRouteQuery(route.query)
   loadSeries(page.value || 1)
   loadProfileMeta()
@@ -925,6 +1016,9 @@ onBeforeUnmount(() => {
     tagsLayoutObserver.disconnect()
     tagsLayoutObserver = null
   }
+
+  window.removeEventListener('pointerdown', onGlobalPointerDown)
+  window.removeEventListener('keydown', onGlobalKeyDown)
 })
 
 watch(() => route.query, (query) => {
@@ -1055,10 +1149,44 @@ function toggleMobileFilters() {
             </div>
 
             <div class="filter-row calendar-widget">
-              <div class="calendar-head">
+              <div ref="calendarPickerRoot" class="calendar-head">
                 <button type="button" class="chip calendar-nav" @click="shiftCalendarMonth(-1)">←</button>
-                <strong>{{ calendarMonthLabel }}</strong>
+                <strong class="calendar-head-label">
+                  <span class="calendar-head-part" @click="toggleCalendarPicker('month')">{{ calendarMonthText }}</span>
+                  <span class="calendar-head-sep"> </span>
+                  <span class="calendar-head-part" @click="toggleCalendarPicker('year')">{{ calendarYearText }}</span>
+                </strong>
                 <button type="button" class="chip calendar-nav" @click="shiftCalendarMonth(1)">→</button>
+
+                <div v-if="calendarPickerMode === 'month'" class="calendar-picker-popover">
+                  <div class="calendar-picker-months">
+                    <button
+                      v-for="month in calendarMonthOptions"
+                      :key="month.value"
+                      type="button"
+                      class="calendar-picker-item"
+                      :class="{ active: month.value === selectedCalendarMonth }"
+                      @click="selectCalendarMonth(month.value)"
+                    >
+                      {{ month.label }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="calendarPickerMode === 'year'" class="calendar-picker-popover">
+                  <div class="calendar-picker-years">
+                    <button
+                      v-for="year in calendarYearOptions"
+                      :key="year"
+                      type="button"
+                      class="calendar-picker-item"
+                      :class="{ active: year === selectedCalendarYear }"
+                      @click="selectCalendarYear(year)"
+                    >
+                      {{ year }}
+                    </button>
+                  </div>
+                </div>
               </div>
               <div class="calendar-weekdays">
                 <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
@@ -1388,15 +1516,70 @@ function toggleMobileFilters() {
 }
 
 .calendar-head {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
 }
 
-.calendar-head strong {
+.calendar-head-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   text-transform: capitalize;
   font-size: 14px;
+}
+
+.calendar-head-part {
+  cursor: pointer;
+}
+
+.calendar-picker-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(49, 58, 53, 0.12);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-picker-months {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-picker-years {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-picker-item {
+  border: 0;
+  border-radius: 8px;
+  background: #f1f5f0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 6px 6px;
+  cursor: pointer;
+}
+
+.calendar-picker-item:hover {
+  background: #e5ece4;
+}
+
+.calendar-picker-item.active {
+  background: var(--accent-soft);
+  color: #3f6d56;
 }
 
 .calendar-nav {
