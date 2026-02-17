@@ -71,19 +71,40 @@ function isTrueLike(value) {
   return ['1', 'true', 'yes', 'on'].includes(normalized)
 }
 
+function normalizePath(url) {
+  const raw = String(url || '').trim()
+  if (!raw) {
+    return ''
+  }
+
+  try {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      const pathname = new URL(raw).pathname || ''
+      return pathname.replace(/^\/api\/v\d+(?=\/|$)/, '') || pathname
+    }
+
+    const pathname = new URL(raw, 'http://local').pathname || ''
+    return pathname.replace(/^\/api\/v\d+(?=\/|$)/, '') || pathname
+  } catch (_) {
+    return raw.startsWith('/') ? raw : `/${raw}`
+  }
+}
+
 export function shouldCacheRequest(method, url, params = null) {
   if (String(method || '').toLowerCase() !== 'get') {
     return false
   }
 
-  const path = String(url || '')
+  const path = normalizePath(url)
   if (!/^\/series(?:\/\d+)?$/.test(path)) {
     return false
   }
 
   const isSeriesShow = /^\/series\/\d+$/.test(path)
   if (!isSeriesShow) {
-    return true
+    // Series list changes frequently (reorder, tag updates, uploads/deletes).
+    // Avoid stale list state in current tab: always fetch list from backend.
+    return false
   }
 
   // Series show with include_photos returns temporary signed preview URLs.
@@ -101,6 +122,6 @@ export function shouldInvalidateSeriesCache(method, url) {
     return false
   }
 
-  const path = String(url || '')
+  const path = normalizePath(url)
   return /^\/series(?:\/|$)/.test(path) || /^\/tags(?:\/|$)/.test(path)
 }
