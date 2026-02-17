@@ -22,10 +22,8 @@ const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
 let loadSeriesRequestId = 0
-let loadCalendarMarksRequestId = 0
 let skipNextRouteReload = false
 const syncingQueryState = ref(false)
-const calendarMarksCache = new Map()
 
 const route = useRoute()
 const router = useRouter()
@@ -318,75 +316,6 @@ function extractSeriesDateKeys(items) {
   })
 
   return keys
-}
-
-function buildCalendarMarksQueryKey() {
-  return JSON.stringify({
-    search: search.value.trim(),
-    tag: selectedTags.value.join(','),
-    sort: activeSort.value,
-  })
-}
-
-async function loadCalendarMarksWithoutDateFilter() {
-  const cacheKey = buildCalendarMarksQueryKey()
-  if (calendarMarksCache.has(cacheKey)) {
-    calendarMarkedDateKeys.value = [...calendarMarksCache.get(cacheKey)]
-    return
-  }
-
-  const requestId = ++loadCalendarMarksRequestId
-  const params = {
-    per_page: 100,
-    page: 1,
-  }
-
-  const searchValue = search.value.trim()
-  if (searchValue) {
-    params.search = searchValue
-  }
-
-  if (selectedTags.value.length) {
-    params.tag = selectedTags.value.join(',')
-  }
-
-  if (activeSort.value !== 'new') {
-    params.sort = activeSort.value
-  }
-
-  try {
-    const keys = new Set()
-    let currentPage = 1
-    let last = 1
-
-    while (currentPage <= last) {
-      const { data } = await api.get('/series', {
-        params: {
-          ...params,
-          page: currentPage,
-        },
-      })
-
-      if (requestId !== loadCalendarMarksRequestId) {
-        return
-      }
-
-      const incoming = extractSeriesDateKeys(data?.data || [])
-      for (const key of incoming) {
-        keys.add(key)
-      }
-
-      const nextLast = Number(data?.last_page || 1)
-      last = Number.isFinite(nextLast) && nextLast > 0 ? nextLast : 1
-      currentPage += 1
-    }
-
-    const result = Array.from(keys)
-    calendarMarksCache.set(cacheKey, result)
-    calendarMarkedDateKeys.value = result
-  } catch (_) {
-    // Keep existing calendar marks if background refresh failed.
-  }
 }
 
 function setPreviewGridRef(seriesId, element) {
@@ -890,20 +819,10 @@ async function loadSeries(targetPage = 1) {
     }
 
     const items = data.data || []
-    const incomingDateKeys = extractSeriesDateKeys(items)
-    const hasDateFilter = Boolean(selectedCalendarDate.value || dateFrom.value || dateTo.value)
-
-    if (hasDateFilter) {
-      const merged = new Set(calendarMarkedDateKeys.value)
-      for (const key of incomingDateKeys) {
-        merged.add(key)
-      }
-      calendarMarkedDateKeys.value = Array.from(merged)
-      loadCalendarMarksWithoutDateFilter()
-    } else {
-      calendarMarkedDateKeys.value = Array.from(incomingDateKeys)
-      loadCalendarMarksWithoutDateFilter()
-    }
+    const calendarDates = Array.isArray(data?.calendar_dates)
+      ? data.calendar_dates.map((value) => String(value || '').trim()).filter(Boolean)
+      : Array.from(extractSeriesDateKeys(items))
+    calendarMarkedDateKeys.value = calendarDates
 
     series.value = items
     page.value = data.current_page || targetPage
