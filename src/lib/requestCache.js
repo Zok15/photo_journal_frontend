@@ -66,13 +66,33 @@ export function clearApiCache() {
   inflightCache.clear()
 }
 
-export function shouldCacheRequest(method, url) {
+function isTrueLike(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return ['1', 'true', 'yes', 'on'].includes(normalized)
+}
+
+export function shouldCacheRequest(method, url, params = null) {
   if (String(method || '').toLowerCase() !== 'get') {
     return false
   }
 
   const path = String(url || '')
-  return /^\/series(?:\/\d+)?$/.test(path)
+  if (!/^\/series(?:\/\d+)?$/.test(path)) {
+    return false
+  }
+
+  const isSeriesShow = /^\/series\/\d+$/.test(path)
+  if (!isSeriesShow) {
+    return true
+  }
+
+  // Series show with include_photos returns temporary signed preview URLs.
+  // These links expire quickly, so caching that payload causes broken previews (403).
+  if (isTrueLike(params?.include_photos)) {
+    return false
+  }
+
+  return true
 }
 
 export function shouldInvalidateSeriesCache(method, url) {
@@ -82,5 +102,5 @@ export function shouldInvalidateSeriesCache(method, url) {
   }
 
   const path = String(url || '')
-  return /^\/series(?:\/|$)/.test(path)
+  return /^\/series(?:\/|$)/.test(path) || /^\/tags(?:\/|$)/.test(path)
 }

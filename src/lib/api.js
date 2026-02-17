@@ -61,7 +61,7 @@ function fetchAndStoreGet(url, config, key) {
 }
 
 api.get = function getWithCache(url, config = {}) {
-  if (!shouldCacheRequest('get', url)) {
+  if (!shouldCacheRequest('get', url, config?.params)) {
     return originalGet(url, config)
   }
 
