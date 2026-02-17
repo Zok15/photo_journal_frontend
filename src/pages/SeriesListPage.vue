@@ -77,6 +77,9 @@ const visibleTagRows = ref(TAG_ROWS_INITIAL)
 const tagRowsTotal = ref(0)
 const tagVisibleHeight = ref(0)
 const tagsCloudRef = ref(null)
+const tagSearchInputRef = ref(null)
+const showTagSearch = ref(false)
+const tagSearchQuery = ref('')
 let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
@@ -105,6 +108,22 @@ const availableTags = computed(() => {
   })
 
   return Array.from(tags).sort((a, b) => a.localeCompare(b))
+})
+
+const filteredAvailableTags = computed(() => {
+  const query = String(tagSearchQuery.value || '').trim().toLowerCase()
+  if (!query) {
+    return availableTags.value
+  }
+
+  const selected = new Set(selectedTags.value.map((tag) => String(tag || '').trim()).filter(Boolean))
+  return availableTags.value.filter((tag) => {
+    if (selected.has(tag)) {
+      return true
+    }
+
+    return tag.toLowerCase().includes(query)
+  })
 })
 
 const hasHiddenTagRows = computed(() => {
@@ -612,6 +631,18 @@ function collapseTagRows() {
   visibleTagRows.value = TAG_ROWS_INITIAL
 }
 
+function toggleTagSearch() {
+  showTagSearch.value = !showTagSearch.value
+  if (showTagSearch.value) {
+    nextTick(() => {
+      tagSearchInputRef.value?.focus()
+    })
+    return
+  }
+
+  tagSearchQuery.value = ''
+}
+
 function shiftCalendarMonth(offset) {
   const current = calendarMonthCursor.value
   calendarMonthCursor.value = new Date(current.getFullYear(), current.getMonth() + offset, 1)
@@ -648,6 +679,10 @@ function onGlobalPointerDown(event) {
 function onGlobalKeyDown(event) {
   if (event.key === 'Escape') {
     closeCalendarPicker()
+    if (showTagSearch.value) {
+      showTagSearch.value = false
+      tagSearchQuery.value = ''
+    }
   }
 }
 
@@ -1067,7 +1102,7 @@ watch(page, () => {
   loadSeries(page.value)
 })
 
-watch([availableTags, visibleTagRows], async () => {
+watch([filteredAvailableTags, visibleTagRows], async () => {
   await nextTick()
   recalcTagRowsLayout()
 }, { immediate: true })
@@ -1218,7 +1253,47 @@ function toggleMobileFilters() {
           </section>
 
           <section class="filter-group">
-            <h3>Теги</h3>
+            <div class="tags-head">
+              <h3>Теги</h3>
+              <div class="tags-search-box">
+                <button
+                  type="button"
+                  class="tags-search-toggle"
+                  title="Поиск по тегам"
+                  aria-label="Поиск по тегам"
+                  @click="toggleTagSearch"
+                >
+                  <svg
+                    v-if="!showTagSearch"
+                    class="tags-search-icon"
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <circle cx="7" cy="7" r="4.5"></circle>
+                    <line x1="10.5" y1="10.5" x2="14" y2="14"></line>
+                  </svg>
+                  <svg
+                    v-else
+                    class="tags-search-close-icon"
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <line x1="4" y1="4" x2="12" y2="12"></line>
+                    <line x1="12" y1="4" x2="4" y2="12"></line>
+                  </svg>
+                </button>
+                <input
+                  ref="tagSearchInputRef"
+                  v-model="tagSearchQuery"
+                  type="text"
+                  class="tags-search-input"
+                  :class="{ 'tags-search-input--visible': showTagSearch }"
+                  placeholder="Найти тег..."
+                />
+              </div>
+            </div>
             <div class="tags-cloud-shell">
               <div
                 ref="tagsCloudRef"
@@ -1227,7 +1302,7 @@ function toggleMobileFilters() {
                 :style="tagCloudStyle"
               >
                 <button
-                  v-for="tag in availableTags"
+                  v-for="tag in filteredAvailableTags"
                   :key="tag"
                   type="button"
                   class="tag-chip"
@@ -1236,7 +1311,9 @@ function toggleMobileFilters() {
                 >
                   #{{ tag }}
                 </button>
-                <span v-if="!availableTags.length" class="hint">Нет тегов</span>
+                <span v-if="!filteredAvailableTags.length" class="hint">
+                  {{ availableTags.length ? 'Ничего не найдено' : 'Нет тегов' }}
+                </span>
               </div>
 
               <div v-if="hasHiddenTagRows" class="tags-fade-overlay"></div>
@@ -1652,6 +1729,101 @@ function toggleMobileFilters() {
   flex-wrap: wrap;
 }
 
+.tags-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tags-head h3 {
+  margin: 0;
+}
+
+.tags-search-box {
+  position: relative;
+  width: 184px;
+  height: 30px;
+  flex: 0 0 184px;
+}
+
+.tags-search-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex: 0 0 auto;
+  transition: color 0.18s ease;
+}
+
+.tags-search-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tags-search-close-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tags-search-input {
+  position: absolute;
+  right: 32px;
+  top: 50%;
+  transform: translateY(-50%) translateX(6px);
+  width: 152px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9faf8;
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 9px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.tags-search-input::placeholder {
+  color: #aeb7ad;
+}
+
+.tags-search-input--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+.tags-search-input:focus {
+  outline: none;
+  border-color: #9bbca9;
+  box-shadow: 0 0 0 2px rgba(155, 188, 169, 0.18);
+}
+
 .tags-cloud-shell {
   position: relative;
   padding-bottom: 34px;
@@ -2025,6 +2197,16 @@ function toggleMobileFilters() {
 
   .series-card h3 {
     font-size: 30px;
+  }
+
+  .tags-search-input {
+    width: 122px;
+    right: 30px;
+  }
+
+  .tags-search-box {
+    width: 156px;
+    flex-basis: 156px;
   }
 
 }
