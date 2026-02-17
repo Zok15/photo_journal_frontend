@@ -14,11 +14,13 @@ const lastPage = ref(1)
 const loadedPage = ref(0)
 const seriesPreviews = ref({})
 const currentUser = ref(getUser())
+const calendarMarkedDateKeys = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
+let loadSeriesRequestId = 0
 const syncingQueryState = ref(false)
 
 const route = useRoute()
@@ -105,21 +107,7 @@ function toLocalDateKey(input) {
   return `${year}-${month}-${day}`
 }
 
-const seriesDateKeys = computed(() => {
-  const keys = new Set()
-
-  series.value.forEach((item) => {
-    if (!item.created_at) {
-      return
-    }
-
-    const key = toLocalDateKey(item.created_at)
-    if (!key) return
-    keys.add(key)
-  })
-
-  return keys
-})
+const seriesDateKeys = computed(() => new Set(calendarMarkedDateKeys.value))
 
 const calendarMonthLabel = computed(() =>
   new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(calendarMonthCursor.value)
@@ -151,45 +139,6 @@ const calendarCells = computed(() => {
   }
 
   return cells
-})
-
-const filteredSeries = computed(() => {
-  const query = search.value.trim().toLowerCase()
-
-  const result = series.value.filter((item) => {
-    const haystack = `${item.title || ''} ${item.description || ''}`.toLowerCase()
-    const queryMatch = !query || haystack.includes(query)
-
-    const created = new Date(item.created_at || 0)
-    const createdTime = created.getTime()
-    let dateMatch = Number.isFinite(createdTime)
-
-    if (selectedCalendarDate.value) {
-      const from = new Date(`${selectedCalendarDate.value}T00:00:00`).getTime()
-      const to = new Date(`${selectedCalendarDate.value}T23:59:59.999`).getTime()
-      dateMatch = dateMatch && createdTime >= from && createdTime <= to
-    } else {
-      const fromTime = dateFrom.value ? new Date(`${dateFrom.value}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
-      const toTime = dateTo.value ? new Date(`${dateTo.value}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY
-      dateMatch = dateMatch && createdTime >= Math.min(fromTime, toTime) && createdTime <= Math.max(fromTime, toTime)
-    }
-
-    const seriesTags = new Set((item.tags || []).map((tag) => String(tag?.name || '').trim().toLowerCase()).filter(Boolean))
-    const selectedNormalized = selectedTags.value.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean)
-    const tagsMatch =
-      selectedNormalized.length === 0 ||
-      selectedNormalized.every((tag) => seriesTags.has(tag))
-
-    return queryMatch && dateMatch && tagsMatch
-  })
-
-  result.sort((a, b) => {
-    const timeA = new Date(a.created_at || 0).getTime()
-    const timeB = new Date(b.created_at || 0).getTime()
-    return activeSort.value === 'new' ? timeB - timeA : timeA - timeB
-  })
-
-  return result
 })
 
 function buildQueryState() {
@@ -335,6 +284,23 @@ function photoUrl(path) {
 
 function previewTiles(seriesId) {
   return seriesPreviews.value[seriesId] || []
+}
+
+function extractSeriesDateKeys(items) {
+  const keys = new Set()
+
+  ;(items || []).forEach((item) => {
+    if (!item?.created_at) {
+      return
+    }
+
+    const key = toLocalDateKey(item.created_at)
+    if (key) {
+      keys.add(key)
+    }
+  })
+
+  return keys
 }
 
 function setPreviewGridRef(seriesId, element) {
@@ -798,34 +764,82 @@ async function createSeries() {
 }
 
 async function loadSeries(targetPage = 1) {
+  const requestId = ++loadSeriesRequestId
   loading.value = true
   error.value = ''
 
   try {
+    const params = {
+      per_page: 10,
+      page: targetPage,
+    }
+
+    const searchValue = search.value.trim()
+    if (searchValue) {
+      params.search = searchValue
+    }
+
+    if (selectedTags.value.length) {
+      params.tag = selectedTags.value.join(',')
+    }
+
+    if (selectedCalendarDate.value) {
+      params.date_from = selectedCalendarDate.value
+      params.date_to = selectedCalendarDate.value
+    } else {
+      if (dateFrom.value) params.date_from = dateFrom.value
+      if (dateTo.value) params.date_to = dateTo.value
+    }
+
+    if (activeSort.value !== 'new') {
+      params.sort = activeSort.value
+    }
+
     const { data } = await api.get('/series', {
-      params: {
-        per_page: 10,
-        page: targetPage,
-      },
+      params,
     })
 
-    series.value = data.data || []
+    if (requestId !== loadSeriesRequestId) {
+      return
+    }
+
+    const items = data.data || []
+    const incomingDateKeys = extractSeriesDateKeys(items)
+    const hasDateFilter = Boolean(selectedCalendarDate.value || dateFrom.value || dateTo.value)
+
+    if (hasDateFilter) {
+      const merged = new Set(calendarMarkedDateKeys.value)
+      for (const key of incomingDateKeys) {
+        merged.add(key)
+      }
+      calendarMarkedDateKeys.value = Array.from(merged)
+    } else {
+      calendarMarkedDateKeys.value = Array.from(incomingDateKeys)
+    }
+
+    series.value = items
     page.value = data.current_page || targetPage
     lastPage.value = data.last_page || 1
     loadedPage.value = page.value
     await loadSeriesPreviews(series.value)
   } catch (e) {
+    if (requestId !== loadSeriesRequestId) {
+      return
+    }
+
     error.value = e?.response?.data?.message || 'Failed to load series.'
   } finally {
-    loading.value = false
+    if (requestId === loadSeriesRequestId) {
+      loading.value = false
+    }
   }
 }
 
 function goToPage(targetPage) {
   if (loading.value) return
   if (targetPage < 1 || targetPage > lastPage.value) return
-  if (targetPage === loadedPage.value) return
-  loadSeries(targetPage)
+  if (targetPage === page.value) return
+  page.value = targetPage
 }
 
 async function loadProfileMeta() {
@@ -891,10 +905,7 @@ onBeforeUnmount(() => {
 
 watch(() => route.query, (query) => {
   applyRouteQuery(query)
-
-  if (page.value !== loadedPage.value) {
-    loadSeries(page.value)
-  }
+  loadSeries(page.value)
 })
 
 watch(searchInput, (value) => {
@@ -907,7 +918,16 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
-watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort, page], () => {
+watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort], () => {
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+
+  syncStateToQuery()
+})
+
+watch(page, () => {
   syncStateToQuery()
 })
 
@@ -1124,10 +1144,10 @@ function toggleMobileFilters() {
 
           <p v-if="loading" class="state-text">Загрузка...</p>
           <p v-else-if="error" class="error">{{ error }}</p>
-          <p v-else-if="!filteredSeries.length" class="state-text">Серии не найдены.</p>
+          <p v-else-if="!series.length" class="state-text">Серии не найдены.</p>
 
           <div v-else class="series-grid">
-            <article v-for="item in filteredSeries" :key="item.id" class="series-card">
+            <article v-for="item in series" :key="item.id" class="series-card">
               <header class="series-card-header">
                 <h3>
                   <RouterLink class="series-title-link" :to="`/series/${item.id}`">
