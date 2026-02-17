@@ -428,21 +428,23 @@ function buildPreviewRows(photos, containerWidth) {
   const previewGap = 8
   const minPerRow = 2
   const maxPerRow = 5
+  const targetRowHeight = 170
+  const minRowHeight = 96
+  const maxRowHeight = 260
   const items = photos.map((photo) => ({
     photo,
     ratio: previewAspectRatios.value[photo.id] || 1,
   }))
 
   if (!items.length) {
-    return { height: 0, rows: [] }
+    return { rows: [] }
   }
 
   if (items.length === 1) {
     const ratio = items[0].ratio || 1
     const height = Math.max(120, Math.min(240, containerWidth / ratio))
     return {
-      height,
-      rows: [{ gap: 0, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
+      rows: [{ gap: 0, height, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
     }
   }
 
@@ -471,72 +473,59 @@ function buildPreviewRows(photos, containerWidth) {
       const rowWidth = containerWidth - previewGap * (counts[index] - 1)
       return rowWidth / ratioSum
     })
-    const maxAllowedHeight = Math.min(...rowHeights)
-    const averageHeight = rowHeights.reduce((sum, value) => sum + value, 0) / rowHeights.length
-    const height = Math.max(96, Math.min(260, averageHeight, maxAllowedHeight))
 
     const rows = []
     cursor = 0
     let emptySpace = 0
-    const nonLastRowGaps = []
+    let outOfRangePenalty = 0
+    let targetDeviation = 0
 
     for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
       const count = counts[rowIndex]
       const chunk = items.slice(cursor, cursor + count)
       cursor += count
-      const widths = chunk.map((item) => item.ratio * height)
-      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
-      const dynamicGap = count > 1 ? Math.max(0, (containerWidth - rowTotalWidth) / (count - 1)) : 0
-      const used = rowTotalWidth + dynamicGap * (count - 1)
 
-      if (rowIndex < counts.length - 1) {
-        emptySpace += Math.max(0, containerWidth - used)
-        if (count > 1) {
-          nonLastRowGaps.push(dynamicGap)
-        }
+      const rowHeight = rowHeights[rowIndex]
+      const clampedHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight))
+      const widths = chunk.map((item) => item.ratio * clampedHeight)
+      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
+      const used = rowTotalWidth + previewGap * (count - 1)
+      emptySpace += Math.abs(containerWidth - used)
+      targetDeviation += Math.abs(targetRowHeight - clampedHeight)
+      if (rowHeight !== clampedHeight) {
+        outOfRangePenalty += Math.abs(rowHeight - clampedHeight) * 6
       }
 
       rows.push(
         {
-          gap: dynamicGap,
+          gap: previewGap,
+          height: clampedHeight,
           tiles: chunk.map((item) => ({
             photo: item.photo,
-            width: item.ratio * height,
+            width: item.ratio * clampedHeight,
           })),
         }
       )
     }
 
-    if (rows.length > 1) {
-      const lastRow = rows[rows.length - 1]
-      if (lastRow.tiles.length > 1) {
-        const averageGap = nonLastRowGaps.length
-          ? nonLastRowGaps.reduce((sum, gap) => sum + gap, 0) / nonLastRowGaps.length
-          : previewGap
-        lastRow.gap = Math.max(0, averageGap)
-      } else {
-        lastRow.gap = 0
-      }
-    }
-
-    const score = emptySpace + Math.abs(170 - height) * 3
+    const score = emptySpace + targetDeviation * 1.4 + outOfRangePenalty
     if (!best || score < best.score) {
-      best = { score, height, rows }
+      best = { score, rows }
     }
   }
 
   if (!best) {
     const height = 160
     return {
-      height,
       rows: [{
-        gap: 0,
+        gap: previewGap,
+        height,
         tiles: items.map((item) => ({ photo: item.photo, width: item.ratio * height })),
       }],
     }
   }
 
-  return { height: best.height, rows: best.rows }
+  return { rows: best.rows }
 }
 
 const previewRowsBySeries = computed(() => {
@@ -1442,7 +1431,7 @@ function toggleMobileFilters() {
                     v-for="tile in row.tiles"
                     :key="tile.photo.id"
                     class="preview-tile"
-                    :style="{ width: `${tile.width}px`, height: `${previewRowsBySeries[item.id]?.height || 0}px` }"
+                    :style="{ width: `${tile.width}px`, height: `${row.height || 0}px` }"
                   >
                     <img
                       class="preview-tile-image"
