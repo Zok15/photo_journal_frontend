@@ -75,7 +75,7 @@ const availableTags = computed(() => {
 })
 
 const hasHiddenTagRows = computed(() => {
-  return tagRowsTotal.value > visibleTagRows.value + 1
+  return tagRowsTotal.value > visibleTagRows.value
 })
 
 const canCollapseTagRows = computed(() => {
@@ -389,9 +389,13 @@ async function ensurePreviewRatio(photo) {
 }
 
 function buildPreviewRows(photos, containerWidth) {
-  const previewGap = 8
-  const minPerRow = 2
-  const maxPerRow = 5
+  const compactMode = containerWidth <= 760
+  const previewGap = compactMode ? 4 : 8
+  const maxCompactGap = 9
+  const minPerRow = compactMode ? 1 : 2
+  const maxPerRow = compactMode
+    ? (containerWidth <= 520 ? 2 : 3)
+    : 5
   const items = photos.map((photo) => ({
     photo,
     ratio: previewAspectRatios.value[photo.id] || 1,
@@ -413,15 +417,35 @@ function buildPreviewRows(photos, containerWidth) {
   const minRows = Math.ceil(items.length / maxPerRow)
   const maxRows = Math.floor(items.length / minPerRow)
   let best = null
+  const candidateCounts = []
 
-  for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
-    const base = Math.floor(items.length / rowsCount)
-    const extra = items.length % rowsCount
-    const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
-
-    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
-      continue
+  if (compactMode) {
+    const counts = []
+    let rest = items.length
+    while (rest > 0) {
+      const take = Math.min(maxPerRow, rest)
+      counts.push(take)
+      rest -= take
     }
+    while (counts.length > 1) {
+      const lastIndex = counts.length - 1
+      const prevIndex = lastIndex - 1
+      if (counts[lastIndex] >= 2 || counts[prevIndex] <= 2) break
+      counts[prevIndex] -= 1
+      counts[lastIndex] += 1
+    }
+    candidateCounts.push(counts)
+  } else {
+    for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
+      const base = Math.floor(items.length / rowsCount)
+      const extra = items.length % rowsCount
+      const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
+      candidateCounts.push(counts)
+    }
+  }
+
+  for (const counts of candidateCounts) {
+    if (counts.some((count) => count < minPerRow || count > maxPerRow)) continue
 
     const ratiosByRow = []
     let cursor = 0
@@ -437,21 +461,19 @@ function buildPreviewRows(photos, containerWidth) {
     })
     const maxAllowedHeight = Math.min(...rowHeights)
     const averageHeight = rowHeights.reduce((sum, value) => sum + value, 0) / rowHeights.length
-    const height = Math.max(96, Math.min(260, averageHeight, maxAllowedHeight))
+    const minHeight = compactMode ? 118 : 96
+    const height = Math.max(minHeight, Math.min(260, averageHeight, maxAllowedHeight))
 
     const rows = []
     cursor = 0
-    let emptySpace = 0
 
     for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
       const count = counts[rowIndex]
       const chunk = items.slice(cursor, cursor + count)
       cursor += count
       const widths = chunk.map((item) => item.ratio * height)
-      const used = widths.reduce((sum, width) => sum + width, 0) + previewGap * (count - 1)
-      emptySpace += Math.max(0, containerWidth - used)
       const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
-      const dynamicGap = count > 1 ? Math.max(0, (containerWidth - rowTotalWidth) / (count - 1)) : 0
+      const dynamicGap = count > 1 ? Math.max(previewGap, (containerWidth - rowTotalWidth) / (count - 1)) : 0
 
       rows.push(
         {
@@ -462,6 +484,89 @@ function buildPreviewRows(photos, containerWidth) {
           })),
         }
       )
+    }
+
+    // Densify: pull tiles from next row while they still fit into current row.
+    const minNonLastPerRow = compactMode ? 1 : 2
+    for (let rowIndex = 0; rowIndex < rows.length - 1; rowIndex += 1) {
+      let current = rows[rowIndex]
+      let next = rows[rowIndex + 1]
+
+      while (current && next) {
+        const nextFirst = next.tiles[0]
+        if (!nextFirst) break
+        if (current.tiles.length >= maxPerRow) break
+
+        const currentWidth = current.tiles.reduce((sum, tile) => sum + tile.width, 0)
+        const nextCountAfterPull = next.tiles.length - 1
+        const nextIsLast = rowIndex + 1 === rows.length - 1
+        const minRequiredInNext = nextIsLast ? 1 : minNonLastPerRow
+        if (nextCountAfterPull < minRequiredInNext) break
+
+        const newCount = current.tiles.length + 1
+        const usedAfterPull = currentWidth + nextFirst.width + previewGap * (newCount - 1)
+        if (usedAfterPull > containerWidth) break
+
+        current.tiles.push(next.tiles.shift())
+        if (next.tiles.length === 0) {
+          rows.splice(rowIndex + 1, 1)
+          next = rows[rowIndex + 1]
+          current = rows[rowIndex]
+          continue
+        }
+
+        current = rows[rowIndex]
+        next = rows[rowIndex + 1]
+      }
+    }
+
+    let emptySpace = 0
+    const nonLastRowGaps = []
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex]
+      const isLastRow = rowIndex === rows.length - 1
+      const rowTilesWidth = row.tiles.reduce((sum, tile) => sum + tile.width, 0)
+      const gaps = Math.max(0, row.tiles.length - 1)
+      const rawGap = gaps > 0 ? (containerWidth - rowTilesWidth) / gaps : 0
+      const dynamicGap = gaps > 0
+        ? (compactMode
+          ? Math.max(previewGap, Math.min(rawGap, maxCompactGap))
+          : Math.max(previewGap, rawGap))
+        : 0
+      row.gap = dynamicGap
+
+      if (!isLastRow) {
+        const used = rowTilesWidth + dynamicGap * gaps
+        emptySpace += Math.max(0, containerWidth - used)
+        if (row.tiles.length > 1) nonLastRowGaps.push(dynamicGap)
+      }
+    }
+
+    // Keep last row natural: use average block gap, don't stretch to full width.
+    if (rows.length > 1) {
+      const lastRow = rows[rows.length - 1]
+      if (lastRow.tiles.length > 1) {
+        const averageGap = nonLastRowGaps.length
+          ? nonLastRowGaps.reduce((sum, gap) => sum + gap, 0) / nonLastRowGaps.length
+          : previewGap
+        lastRow.gap = Math.max(previewGap, Math.min(averageGap, previewGap * 2))
+      } else {
+        lastRow.gap = 0
+      }
+    }
+
+    // Safety: if any row still overflows on narrow screens, shrink row tiles to fit.
+    for (const row of rows) {
+      const gaps = Math.max(0, row.tiles.length - 1)
+      const tilesWidth = row.tiles.reduce((sum, tile) => sum + tile.width, 0)
+      const maxTilesWidth = containerWidth - row.gap * gaps
+      if (maxTilesWidth > 0 && tilesWidth > maxTilesWidth) {
+        const scale = maxTilesWidth / tilesWidth
+        row.tiles = row.tiles.map((tile) => ({
+          ...tile,
+          width: tile.width * scale,
+        }))
+      }
     }
 
     const score = emptySpace + Math.abs(170 - height) * 3
@@ -527,7 +632,7 @@ function recalcTagRowsLayout() {
 
   tagRowsTotal.value = rows.length
 
-  if (rows.length <= visibleTagRows.value + 1) {
+  if (rows.length <= visibleTagRows.value) {
     tagVisibleHeight.value = rows.at(-1)?.bottom || 0
     return
   }
