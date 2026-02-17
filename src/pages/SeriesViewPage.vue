@@ -892,7 +892,7 @@ watch(() => route.params.id, () => {
               :alt="photo.original_name || 'photo'"
             />
             <div class="thumb-meta">
-              <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
+              <strong>{{ photo.original_name }}</strong>
               <div class="thumb-bottom">
                 <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
                 <div class="thumb-actions">

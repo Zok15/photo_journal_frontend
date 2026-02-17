@@ -356,6 +356,22 @@ function previewTiles(seriesId) {
   return seriesPreviews.value[seriesId] || []
 }
 
+function previewOverflowCount(item) {
+  const total = Number(item?.photos_count || 0)
+  const shown = previewTiles(item?.id).length
+  return Math.max(0, total - shown)
+}
+
+function shouldShowPreviewOverflowOnTile(item, tile) {
+  const tiles = previewTiles(item?.id)
+  if (!tiles.length || previewOverflowCount(item) <= 0) {
+    return false
+  }
+
+  const lastTile = tiles[tiles.length - 1]
+  return Number(lastTile?.id) === Number(tile?.photo?.id)
+}
+
 function extractSeriesDateKeys(items) {
   const keys = new Set()
 
@@ -1439,6 +1455,12 @@ function toggleMobileFilters() {
                       :alt="tile.photo.alt"
                       @error="onPreviewImageError($event, tile.photo)"
                     />
+                    <div
+                      v-if="shouldShowPreviewOverflowOnTile(item, tile)"
+                      class="preview-more-badge"
+                    >
+                      +{{ previewOverflowCount(item) }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2060,6 +2082,7 @@ function toggleMobileFilters() {
 }
 
 .preview-tile {
+  position: relative;
   flex: 0 0 auto;
   box-sizing: border-box;
   overflow: hidden;
@@ -2074,6 +2097,21 @@ function toggleMobileFilters() {
   border: 1px solid rgba(125, 134, 128, 0.25);
   background: #eef2ec;
   object-fit: contain;
+}
+
+.preview-more-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  border-radius: 999px;
+  background: rgba(21, 28, 24, 0.72);
+  color: #f6faf7;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 9px;
+  backdrop-filter: blur(2px);
 }
 
 .pager {
