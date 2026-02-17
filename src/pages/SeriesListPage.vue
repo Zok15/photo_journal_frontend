@@ -902,6 +902,7 @@ async function loadSeries(targetPage = 1) {
       loadCalendarMarksWithoutDateFilter()
     } else {
       calendarMarkedDateKeys.value = Array.from(incomingDateKeys)
+      loadCalendarMarksWithoutDateFilter()
     }
 
     series.value = items
