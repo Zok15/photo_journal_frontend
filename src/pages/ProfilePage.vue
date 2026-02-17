@@ -115,12 +115,6 @@ onMounted(() => {
 
 <style scoped>
 .profile-page {
-  --bg: #e8e9e6;
-  --panel: #f4f5f2;
-  --line: #dde0d9;
-  --text: #313a35;
-  --muted: #748077;
-  --accent: #5d9776;
   min-height: calc(100vh - 58px);
   background:
     radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
@@ -191,28 +185,7 @@ onMounted(() => {
   background: #fff;
 }
 
-.primary-btn {
-  border: 0;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 10px 14px;
-  background: var(--accent);
-  color: #eff7f2;
-  width: fit-content;
-}
-
-.primary-btn:hover {
-  background: #4f8366;
-}
-
-.primary-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .hint {
-  color: var(--muted);
   margin: 0;
 }
 
@@ -222,32 +195,12 @@ onMounted(() => {
   align-items: center;
 }
 
-.ghost-btn {
-  text-decoration: none;
-  color: #35403a;
-  background: #edf1ec;
-  border: 1px solid #d6dbd4;
-  border-radius: 9px;
-  font-weight: 700;
-  padding: 10px 14px;
-  line-height: 1;
-}
-
-.ghost-btn:hover {
-  background: #e4eae3;
-}
-
-.state-text {
-  color: var(--muted);
-}
-
 .success {
   color: #2f7a43;
   margin: 0;
 }
 
 .error {
-  color: #9f2f2f;
   margin: 0;
 }
 

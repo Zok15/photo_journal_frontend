@@ -1,0 +1,58 @@
+:root {
+  --bg: #e8e9e6;
+  --panel: #f4f5f2;
+  --line: #dde0d9;
+  --text: #313a35;
+  --muted: #748077;
+  --accent: #5d9776;
+  --accent-soft: #ddeee4;
+  --chip: #edf1ec;
+}
+
+.primary-btn {
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: #eff7f2;
+}
+
+.primary-btn:hover {
+  background: #4f8366;
+}
+
+.primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghost-btn {
+  text-decoration: none;
+  color: var(--text);
+  background: var(--chip);
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  font-weight: 700;
+  padding: 8px 12px;
+  line-height: 1;
+}
+
+.ghost-btn:hover {
+  background: #e4eae3;
+}
+
+.ghost-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hint,
+.state-text {
+  color: var(--muted);
+}
+
+.error {
+  color: #9f2f2f;
+}

@@ -26,6 +26,7 @@ const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
 let loadSeriesRequestId = 0
+let refreshPreviewUrlsInFlight = false
 let skipNextRouteReload = false
 const syncingQueryState = ref(false)
 
@@ -831,6 +832,16 @@ function onPreviewImageError(event, photo) {
   const fallback = String(photo?.fallbackSrc || '').trim()
   if (fallback && target.src !== fallback) {
     target.src = fallback
+    return
+  }
+
+  if (!refreshPreviewUrlsInFlight) {
+    refreshPreviewUrlsInFlight = true
+    loadSeries(page.value)
+      .catch(() => {})
+      .finally(() => {
+        refreshPreviewUrlsInFlight = false
+      })
   }
 }
 
@@ -929,6 +940,10 @@ async function loadSeries(targetPage = 1) {
     if (activeSort.value !== 'new') {
       params.sort = activeSort.value
     }
+
+    // List payload contains temporary signed preview URLs.
+    // Force a unique URL to avoid browser 304 reuse of expired preview links.
+    params.preview_nonce = Date.now()
 
     const { data } = await api.get('/series', {
       params,
@@ -1454,14 +1469,6 @@ function toggleMobileFilters() {
 
 <style scoped>
 .journal-page {
-  --bg: #e8e9e6;
-  --panel: #f4f5f2;
-  --line: #dde0d9;
-  --text: #313a35;
-  --muted: #748077;
-  --accent: #5d9776;
-  --accent-soft: #ddeee4;
-  --chip: #edf1ec;
   min-height: calc(100vh - 72px);
   padding: 24px 8px 36px;
   background:
@@ -2087,49 +2094,14 @@ function toggleMobileFilters() {
   align-items: center;
 }
 
-.hint {
-  color: var(--muted);
-}
-
-.error {
-  color: #9f2f2f;
-}
-
 .warnings {
   margin: 0;
   padding-left: 16px;
   color: #87520b;
 }
 
-.state-text {
-  color: var(--muted);
-}
-
-.primary-btn,
 .ghost-btn {
   border: 0;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 10px 14px;
-}
-
-.primary-btn {
-  background: var(--accent);
-  color: #eff7f2;
-}
-
-.primary-btn:hover {
-  background: #4f8366;
-}
-
-.primary-btn:disabled,
-.ghost-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.ghost-btn {
   background: var(--chip);
   color: var(--text);
 }

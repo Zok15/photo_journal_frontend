@@ -963,12 +963,6 @@ watch(() => route.params.id, () => {
 
 <style scoped>
 .series-page {
-  --bg: #e8e9e6;
-  --panel: #f4f5f2;
-  --line: #dde0d9;
-  --text: #313a35;
-  --muted: #748077;
-  --accent: #5d9776;
   min-height: calc(100vh - 58px);
   padding: 18px;
   background:
@@ -1211,10 +1205,6 @@ watch(() => route.params.id, () => {
   gap: 8px;
 }
 
-.hint {
-  color: var(--muted);
-}
-
 .photo-grid {
   column-count: 2;
   column-gap: 10px;
@@ -1328,40 +1318,6 @@ watch(() => route.params.id, () => {
   margin-top: 12px;
 }
 
-.primary-btn {
-  border: 0;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 10px 14px;
-  background: var(--accent);
-  color: #eff7f2;
-  width: fit-content;
-}
-
-.primary-btn:hover {
-  background: #4f8366;
-}
-
-.primary-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.ghost-btn {
-  border: 1px solid #c8d2c8;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 8px 12px;
-  background: #edf1ec;
-  color: var(--text);
-}
-
-.ghost-btn:hover {
-  background: #e3eae2;
-}
-
 .danger-btn {
   border: 1px solid #bc7a7a;
   border-radius: 9px;
@@ -1387,18 +1343,10 @@ watch(() => route.params.id, () => {
   font-size: 16px;
 }
 
-.error {
-  color: #9f2f2f;
-}
-
 .warnings {
   margin: 0;
   padding-left: 16px;
   color: #87520b;
-}
-
-.state-text {
-  color: var(--muted);
 }
 
 @media (min-width: 1200px) {

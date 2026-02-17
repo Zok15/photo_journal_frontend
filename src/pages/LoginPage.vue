@@ -67,12 +67,6 @@ async function submit() {
 
 <style scoped>
 .login-page {
-  --bg: #e8e9e6;
-  --panel: #f4f5f2;
-  --line: #dde0d9;
-  --text: #313a35;
-  --muted: #748077;
-  --accent: #5d9776;
   min-height: calc(100vh - 58px);
   background:
     radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
@@ -146,27 +140,7 @@ async function submit() {
   background: #fff;
 }
 
-.primary-btn {
-  border: 0;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 10px 14px;
-  background: var(--accent);
-  color: #eff7f2;
-}
-
-.primary-btn:hover {
-  background: #4f8366;
-}
-
-.primary-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .error {
-  color: #9f2f2f;
   margin: 0;
 }
 </style>
