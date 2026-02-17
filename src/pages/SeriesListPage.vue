@@ -15,13 +15,17 @@ const loadedPage = ref(0)
 const seriesPreviews = ref({})
 const currentUser = ref(getUser())
 const calendarMarkedDateKeys = ref([])
+const fetchedTags = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
 let loadSeriesRequestId = 0
+let loadCalendarMarksRequestId = 0
+let skipNextRouteReload = false
 const syncingQueryState = ref(false)
+const calendarMarksCache = new Map()
 
 const route = useRoute()
 const router = useRouter()
@@ -66,11 +70,21 @@ const journalTitle = computed(() => {
 const availableTags = computed(() => {
   const tags = new Set()
 
+  fetchedTags.value.forEach((name) => {
+    const normalized = String(name || '').trim()
+    if (normalized) tags.add(normalized)
+  })
+
   series.value.forEach((item) => {
     ;(item.tags || []).forEach((tag) => {
       const name = String(tag?.name || '').trim()
       if (name) tags.add(name)
     })
+  })
+
+  selectedTags.value.forEach((name) => {
+    const normalized = String(name || '').trim()
+    if (normalized) tags.add(normalized)
   })
 
   return Array.from(tags).sort((a, b) => a.localeCompare(b))
@@ -215,7 +229,10 @@ function syncStateToQuery() {
     return
   }
 
-  router.replace({ query: nextQuery })
+  skipNextRouteReload = true
+  router.replace({ query: nextQuery }).catch(() => {
+    skipNextRouteReload = false
+  })
 }
 
 function onCreateFilesChanged(event) {
@@ -301,6 +318,75 @@ function extractSeriesDateKeys(items) {
   })
 
   return keys
+}
+
+function buildCalendarMarksQueryKey() {
+  return JSON.stringify({
+    search: search.value.trim(),
+    tag: selectedTags.value.join(','),
+    sort: activeSort.value,
+  })
+}
+
+async function loadCalendarMarksWithoutDateFilter() {
+  const cacheKey = buildCalendarMarksQueryKey()
+  if (calendarMarksCache.has(cacheKey)) {
+    calendarMarkedDateKeys.value = [...calendarMarksCache.get(cacheKey)]
+    return
+  }
+
+  const requestId = ++loadCalendarMarksRequestId
+  const params = {
+    per_page: 100,
+    page: 1,
+  }
+
+  const searchValue = search.value.trim()
+  if (searchValue) {
+    params.search = searchValue
+  }
+
+  if (selectedTags.value.length) {
+    params.tag = selectedTags.value.join(',')
+  }
+
+  if (activeSort.value !== 'new') {
+    params.sort = activeSort.value
+  }
+
+  try {
+    const keys = new Set()
+    let currentPage = 1
+    let last = 1
+
+    while (currentPage <= last) {
+      const { data } = await api.get('/series', {
+        params: {
+          ...params,
+          page: currentPage,
+        },
+      })
+
+      if (requestId !== loadCalendarMarksRequestId) {
+        return
+      }
+
+      const incoming = extractSeriesDateKeys(data?.data || [])
+      for (const key of incoming) {
+        keys.add(key)
+      }
+
+      const nextLast = Number(data?.last_page || 1)
+      last = Number.isFinite(nextLast) && nextLast > 0 ? nextLast : 1
+      currentPage += 1
+    }
+
+    const result = Array.from(keys)
+    calendarMarksCache.set(cacheKey, result)
+    calendarMarkedDateKeys.value = result
+  } catch (_) {
+    // Keep existing calendar marks if background refresh failed.
+  }
 }
 
 function setPreviewGridRef(seriesId, element) {
@@ -813,6 +899,7 @@ async function loadSeries(targetPage = 1) {
         merged.add(key)
       }
       calendarMarkedDateKeys.value = Array.from(merged)
+      loadCalendarMarksWithoutDateFilter()
     } else {
       calendarMarkedDateKeys.value = Array.from(incomingDateKeys)
     }
@@ -858,6 +945,22 @@ async function loadProfileMeta() {
   }
 }
 
+async function loadAvailableTags() {
+  try {
+    const { data } = await api.get('/tags', {
+      params: {
+        limit: 500,
+      },
+    })
+
+    fetchedTags.value = (Array.isArray(data?.data) ? data.data : [])
+      .map((tag) => String(tag?.name || '').trim())
+      .filter(Boolean)
+  } catch (_) {
+    // Keep page-level fallback tags when global tags request is unavailable.
+  }
+}
+
 onMounted(() => {
   previewResizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
@@ -884,6 +987,7 @@ onMounted(() => {
   applyRouteQuery(route.query)
   loadSeries(page.value || 1)
   loadProfileMeta()
+  loadAvailableTags()
 })
 
 onBeforeUnmount(() => {
@@ -905,6 +1009,11 @@ onBeforeUnmount(() => {
 
 watch(() => route.query, (query) => {
   applyRouteQuery(query)
+  if (skipNextRouteReload) {
+    skipNextRouteReload = false
+    return
+  }
+
   loadSeries(page.value)
 })
 
@@ -919,16 +1028,26 @@ watch(searchInput, (value) => {
 })
 
 watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort], () => {
+  if (syncingQueryState.value) {
+    return
+  }
+
   if (page.value !== 1) {
     page.value = 1
     return
   }
 
   syncStateToQuery()
+  loadSeries(1)
 })
 
 watch(page, () => {
+  if (syncingQueryState.value) {
+    return
+  }
+
   syncStateToQuery()
+  loadSeries(page.value)
 })
 
 watch([availableTags, visibleTagRows], async () => {
