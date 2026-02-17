@@ -7,8 +7,8 @@ import { setSession } from '../lib/session'
 const route = useRoute()
 const router = useRouter()
 
-const email = ref('admin@example.com')
-const password = ref('admin12345')
+const email = ref('')
+const password = ref('')
 const loading = ref(false)
 const error = ref('')
 
