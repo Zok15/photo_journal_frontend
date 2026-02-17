@@ -47,6 +47,7 @@ const tagEditError = ref('')
 const showTagInput = ref(false)
 const tagSuggestions = ref([])
 const tagSuggestionsLoading = ref(false)
+const photoUrlVersion = ref(0)
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
 
@@ -100,8 +101,23 @@ function photoUrl(path) {
   return `${apiOrigin()}/storage/${path}`
 }
 
+function withCacheBust(url) {
+  const source = String(url || '').trim()
+  if (!source) {
+    return ''
+  }
+
+  const separator = source.includes('?') ? '&' : '?'
+  return `${source}${separator}v=${photoUrlVersion.value}`
+}
+
 function resolvedPhotoUrl(photo) {
-  return photo?.preview_url || photoUrl(photo?.path)
+  const signed = String(photo?.preview_url || '').trim()
+  if (signed) {
+    return signed
+  }
+
+  return withCacheBust(photoUrl(photo?.path))
 }
 
 function resolvedPhotoFallbackUrl(photo) {
@@ -109,7 +125,7 @@ function resolvedPhotoFallbackUrl(photo) {
     return ''
   }
 
-  return photoUrl(photo?.path)
+  return withCacheBust(photoUrl(photo?.path))
 }
 
 function formatDate(value) {
@@ -717,6 +733,7 @@ async function loadSeries(options = {}) {
       },
     })
 
+    photoUrlVersion.value = Date.now()
     item.value = data.data
   } catch (e) {
     if (!silent) {

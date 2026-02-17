@@ -18,6 +18,7 @@ const calendarMarkedDateKeys = ref([])
 const fetchedTags = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
+const previewUrlVersion = ref(0)
 const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
@@ -371,6 +372,16 @@ function photoUrl(path) {
   }
 
   return `${apiOrigin()}/storage/${path}`
+}
+
+function withCacheBust(url) {
+  const source = String(url || '').trim()
+  if (!source) {
+    return ''
+  }
+
+  const separator = source.includes('?') ? '&' : '?'
+  return `${source}${separator}v=${previewUrlVersion.value}`
 }
 
 function previewTiles(seriesId) {
@@ -811,10 +822,11 @@ async function loadSeriesPreviews(items) {
       .map((photo) => {
         const signedSrc = typeof photo?.preview_url === 'string' ? photo.preview_url : ''
         const directSrc = photoUrl(photo?.path)
+        const bustedDirectSrc = withCacheBust(directSrc)
         return {
           id: photo.id,
-          src: signedSrc || directSrc || '',
-          fallbackSrc: signedSrc && directSrc && signedSrc !== directSrc ? directSrc : '',
+          src: signedSrc || bustedDirectSrc || '',
+          fallbackSrc: signedSrc && directSrc && signedSrc !== directSrc ? bustedDirectSrc : '',
           alt: photo.original_name || `photo-${photo.id}`,
         }
       })
@@ -945,6 +957,7 @@ async function loadSeries(targetPage = 1) {
     }
 
     const items = data.data || []
+    previewUrlVersion.value = Date.now()
     const calendarDates = Array.isArray(data?.calendar_dates)
       ? data.calendar_dates.map((value) => String(value || '').trim()).filter(Boolean)
       : Array.from(extractSeriesDateKeys(items))
