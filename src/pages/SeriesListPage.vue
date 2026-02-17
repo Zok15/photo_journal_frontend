@@ -43,6 +43,9 @@ const calendarPickerRoot = ref(null)
 const calendarPickerMode = ref(null)
 const showCreateForm = ref(false)
 const calendarMonthCursor = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+const today = new Date()
+const todayMonth = today.getMonth()
+const todayYear = today.getFullYear()
 const calendarMonthOptions = [
   { value: 0, label: 'Январь' },
   { value: 1, label: 'Февраль' },
@@ -1165,7 +1168,10 @@ function toggleMobileFilters() {
                       :key="month.value"
                       type="button"
                       class="calendar-picker-item"
-                      :class="{ active: month.value === selectedCalendarMonth }"
+                      :class="{
+                        active: month.value === selectedCalendarMonth,
+                        current: month.value === todayMonth,
+                      }"
                       @click="selectCalendarMonth(month.value)"
                     >
                       {{ month.label }}
@@ -1180,7 +1186,10 @@ function toggleMobileFilters() {
                       :key="year"
                       type="button"
                       class="calendar-picker-item"
-                      :class="{ active: year === selectedCalendarYear }"
+                      :class="{
+                        active: year === selectedCalendarYear,
+                        current: year === todayYear,
+                      }"
                       @click="selectCalendarYear(year)"
                     >
                       {{ year }}
@@ -1580,6 +1589,11 @@ function toggleMobileFilters() {
 .calendar-picker-item.active {
   background: var(--accent-soft);
   color: #3f6d56;
+}
+
+.calendar-picker-item.current:not(.active) {
+  box-shadow: inset 0 0 0 1px rgba(79, 131, 102, 0.24);
+  color: #4c6f5b;
 }
 
 .calendar-nav {
