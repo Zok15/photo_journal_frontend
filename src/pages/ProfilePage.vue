@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
+import { formatValidationErrorMessage } from '../lib/formErrors'
 import { setCurrentUser } from '../lib/session'
 
 const loading = ref(true)
@@ -15,18 +16,7 @@ const form = ref({
 })
 
 function formatValidationError(err) {
-  const fallback = err?.response?.data?.message || 'Request failed.'
-  const errors = err?.response?.data?.errors
-
-  if (!errors) {
-    return fallback
-  }
-
-  const lines = Object.values(errors)
-    .flat()
-    .filter(Boolean)
-
-  return lines.length ? `${fallback} ${lines.join(' ')}` : fallback
+  return formatValidationErrorMessage(err, 'Request failed.')
 }
 
 async function loadProfile() {

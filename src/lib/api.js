@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { normalizeApiError } from './errors'
+import { FALLBACK_API_BASE_URL, getApiBaseUrl } from './url'
 import {
   clearApiCache,
   clearInflightRequest,
@@ -12,11 +13,10 @@ import {
   shouldInvalidateSeriesCache,
 } from './requestCache'
 
-const fallbackBaseURL = 'http://127.0.0.1:8091/api/v1'
-const baseURL = import.meta.env.VITE_API_BASE_URL || fallbackBaseURL
+const baseURL = getApiBaseUrl()
 
 if (import.meta.env.DEV && !import.meta.env.VITE_API_BASE_URL) {
-  console.warn(`[api] VITE_API_BASE_URL is not set, fallback is used: ${fallbackBaseURL}`)
+  console.warn(`[api] VITE_API_BASE_URL is not set, fallback is used: ${FALLBACK_API_BASE_URL}`)
 }
 
 export const api = axios.create({

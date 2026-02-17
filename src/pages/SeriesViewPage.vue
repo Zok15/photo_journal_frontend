@@ -2,9 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
+import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
+import { buildStorageUrl, withCacheBust } from '../lib/url'
+import { findInvalidUploadFile } from '../lib/uploadPolicy'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,9 +56,6 @@ let tagSuggestRequestId = 0
 
 const selectedPhoto = ref(null)
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
-
 const photoList = computed(() => item.value?.photos || [])
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
@@ -88,27 +88,8 @@ function mergeSeriesPayload(next) {
   }
 }
 
-function apiOrigin() {
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
-  return base.replace(/\/api\/v1\/?$/, '')
-}
-
 function photoUrl(path) {
-  if (!path) {
-    return ''
-  }
-
-  return `${apiOrigin()}/storage/${path}`
-}
-
-function withCacheBust(url) {
-  const source = String(url || '').trim()
-  if (!source) {
-    return ''
-  }
-
-  const separator = source.includes('?') ? '&' : '?'
-  return `${source}${separator}v=${photoUrlVersion.value}`
+  return buildStorageUrl(path)
 }
 
 function resolvedPhotoUrl(photo) {
@@ -117,7 +98,7 @@ function resolvedPhotoUrl(photo) {
     return signed
   }
 
-  return withCacheBust(photoUrl(photo?.path))
+  return withCacheBust(photoUrl(photo?.path), photoUrlVersion.value)
 }
 
 function resolvedPhotoFallbackUrl(photo) {
@@ -125,7 +106,7 @@ function resolvedPhotoFallbackUrl(photo) {
     return ''
   }
 
-  return withCacheBust(photoUrl(photo?.path))
+  return withCacheBust(photoUrl(photo?.path), photoUrlVersion.value)
 }
 
 function formatDate(value) {
@@ -163,7 +144,7 @@ function formatSize(bytes) {
 
 function onUploadFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = files.find((file) => file.size > MAX_RAW_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
+  const invalid = findInvalidUploadFile(files)
 
   if (invalid) {
     uploadError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
@@ -177,22 +158,7 @@ function onUploadFilesChanged(event) {
 }
 
 function formatValidationError(err) {
-  const fallback = err?.response?.data?.message || 'Request failed.'
-  const errors = err?.response?.data?.errors
-
-  if (!errors) {
-    return fallback
-  }
-
-  const lines = Object.values(errors)
-    .flat()
-    .filter(Boolean)
-
-  if (!lines.length) {
-    return fallback
-  }
-
-  return `${fallback} ${lines.join(' ')}`
+  return formatValidationErrorMessage(err, 'Request failed.')
 }
 
 function openEditSeries() {

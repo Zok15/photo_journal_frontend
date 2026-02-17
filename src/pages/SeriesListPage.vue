@@ -3,8 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
+import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
+import { buildStorageUrl, withCacheBust } from '../lib/url'
+import { findInvalidUploadFile } from '../lib/uploadPolicy'
 
 const series = ref([])
 const loading = ref(true)
@@ -69,8 +72,6 @@ const createFilesInput = ref(null)
 const creating = ref(false)
 const createError = ref('')
 const createWarnings = ref([])
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 const showMobileFilters = ref(false)
 const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
@@ -312,7 +313,7 @@ function syncStateToQuery() {
 
 function onCreateFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = files.find((file) => file.size > MAX_RAW_FILE_SIZE_BYTES || !ALLOWED_TYPES.includes(file.type))
+  const invalid = findInvalidUploadFile(files)
 
   if (invalid) {
     createError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
@@ -326,22 +327,7 @@ function onCreateFilesChanged(event) {
 }
 
 function formatValidationError(err) {
-  const fallback = err?.response?.data?.message || 'Request failed.'
-  const errors = err?.response?.data?.errors
-
-  if (!errors) {
-    return fallback
-  }
-
-  const lines = Object.values(errors)
-    .flat()
-    .filter(Boolean)
-
-  if (!lines.length) {
-    return fallback
-  }
-
-  return `${fallback} ${lines.join(' ')}`
+  return formatValidationErrorMessage(err, 'Request failed.')
 }
 
 function formatDate(value) {
@@ -361,27 +347,8 @@ function formatDate(value) {
   }).format(date)
 }
 
-function apiOrigin() {
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8091/api/v1'
-  return base.replace(/\/api\/v1\/?$/, '')
-}
-
 function photoUrl(path) {
-  if (!path) {
-    return ''
-  }
-
-  return `${apiOrigin()}/storage/${path}`
-}
-
-function withCacheBust(url) {
-  const source = String(url || '').trim()
-  if (!source) {
-    return ''
-  }
-
-  const separator = source.includes('?') ? '&' : '?'
-  return `${source}${separator}v=${previewUrlVersion.value}`
+  return buildStorageUrl(path)
 }
 
 function previewTiles(seriesId) {
@@ -571,11 +538,26 @@ function buildPreviewRows(photos, containerWidth) {
   return { height: best.height, rows: best.rows }
 }
 
-function previewRows(seriesId) {
-  const photos = previewTiles(seriesId)
-  const width = previewGridWidths.value[seriesId] || 920
-  return buildPreviewRows(photos, width)
-}
+const previewRowsBySeries = computed(() => {
+  const map = {}
+
+  series.value.forEach((item) => {
+    const seriesId = Number(item?.id || 0)
+    if (!seriesId) {
+      return
+    }
+
+    const photos = previewTiles(seriesId)
+    if (!photos.length) {
+      return
+    }
+
+    const width = previewGridWidths.value[seriesId] || 920
+    map[seriesId] = buildPreviewRows(photos, width)
+  })
+
+  return map
+})
 
 function toggleTag(tag) {
   if (selectedTags.value.includes(tag)) {
@@ -822,7 +804,7 @@ async function loadSeriesPreviews(items) {
       .map((photo) => {
         const signedSrc = typeof photo?.preview_url === 'string' ? photo.preview_url : ''
         const directSrc = photoUrl(photo?.path)
-        const bustedDirectSrc = withCacheBust(directSrc)
+        const bustedDirectSrc = withCacheBust(directSrc, previewUrlVersion.value)
         return {
           id: photo.id,
           src: signedSrc || bustedDirectSrc || '',
@@ -1436,7 +1418,7 @@ function toggleMobileFilters() {
                 class="preview-grid"
               >
                 <div
-                  v-for="(row, rowIndex) in previewRows(item.id).rows"
+                  v-for="(row, rowIndex) in (previewRowsBySeries[item.id]?.rows || [])"
                   :key="`${item.id}-${rowIndex}`"
                   class="preview-row"
                   :style="{ columnGap: `${row.gap}px` }"
@@ -1445,7 +1427,7 @@ function toggleMobileFilters() {
                     v-for="tile in row.tiles"
                     :key="tile.photo.id"
                     class="preview-tile"
-                    :style="{ width: `${tile.width}px`, height: `${previewRows(item.id).height}px` }"
+                    :style="{ width: `${tile.width}px`, height: `${previewRowsBySeries[item.id]?.height || 0}px` }"
                   >
                     <img
                       class="preview-tile-image"
