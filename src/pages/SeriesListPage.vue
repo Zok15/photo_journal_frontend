@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
@@ -48,6 +48,13 @@ const createWarnings = ref([])
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_RAW_FILE_SIZE_BYTES = 25 * 1024 * 1024
 const showMobileFilters = ref(false)
+const TAG_ROWS_INITIAL = 4
+const TAG_ROWS_STEP = 10
+const visibleTagRows = ref(TAG_ROWS_INITIAL)
+const tagRowsTotal = ref(0)
+const tagVisibleHeight = ref(0)
+const tagsCloudRef = ref(null)
+let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
   const title = currentUser.value?.journal_title
@@ -65,6 +72,25 @@ const availableTags = computed(() => {
   })
 
   return Array.from(tags).sort((a, b) => a.localeCompare(b))
+})
+
+const hasHiddenTagRows = computed(() => {
+  return tagRowsTotal.value > visibleTagRows.value + 1
+})
+
+const canCollapseTagRows = computed(() => {
+  return visibleTagRows.value > TAG_ROWS_INITIAL
+})
+
+const tagCloudStyle = computed(() => {
+  if (!hasHiddenTagRows.value || tagVisibleHeight.value <= 0) {
+    return {}
+  }
+
+  return {
+    maxHeight: `${tagVisibleHeight.value}px`,
+    '--tags-visible-height': `${tagVisibleHeight.value}px`,
+  }
 })
 
 function toLocalDateKey(input) {
@@ -473,6 +499,62 @@ function toggleTag(tag) {
   selectedTags.value = [...selectedTags.value, tag]
 }
 
+function recalcTagRowsLayout() {
+  const container = tagsCloudRef.value
+  if (!container) {
+    tagRowsTotal.value = 0
+    tagVisibleHeight.value = 0
+    return
+  }
+
+  const chips = Array.from(container.querySelectorAll('.tag-chip'))
+  if (!chips.length) {
+    tagRowsTotal.value = 0
+    tagVisibleHeight.value = 0
+    return
+  }
+
+  const rowsByTop = new Map()
+  for (const chip of chips) {
+    const top = chip.offsetTop
+    const bottom = chip.offsetTop + chip.offsetHeight
+    const current = rowsByTop.get(top) || { top, bottom }
+    current.bottom = Math.max(current.bottom, bottom)
+    rowsByTop.set(top, current)
+  }
+
+  const rows = Array.from(rowsByTop.values()).sort((a, b) => a.top - b.top)
+
+  tagRowsTotal.value = rows.length
+
+  if (rows.length <= visibleTagRows.value + 1) {
+    tagVisibleHeight.value = rows.at(-1)?.bottom || 0
+    return
+  }
+
+  // Keep first N rows fully visible and show only part of the next row.
+  const fullRowsIndex = Math.min(rows.length, visibleTagRows.value) - 1
+  const nextRowIndex = Math.min(rows.length - 1, visibleTagRows.value)
+  const fullBottom = rows[fullRowsIndex]?.bottom || 0
+  const nextRow = rows[nextRowIndex] || null
+
+  if (!nextRow) {
+    tagVisibleHeight.value = fullBottom
+    return
+  }
+
+  const nextRowHeight = nextRow.bottom - nextRow.top
+  tagVisibleHeight.value = Math.round(fullBottom + nextRowHeight * 0.45)
+}
+
+function expandTagRows() {
+  visibleTagRows.value += TAG_ROWS_STEP
+}
+
+function collapseTagRows() {
+  visibleTagRows.value = TAG_ROWS_INITIAL
+}
+
 function shiftCalendarMonth(offset) {
   const current = calendarMonthCursor.value
   calendarMonthCursor.value = new Date(current.getFullYear(), current.getMonth() + offset, 1)
@@ -753,6 +835,13 @@ onMounted(() => {
     }
   })
 
+  tagsLayoutObserver = new ResizeObserver(() => {
+    recalcTagRowsLayout()
+  })
+  if (tagsCloudRef.value) {
+    tagsLayoutObserver.observe(tagsCloudRef.value)
+  }
+
   applyRouteQuery(route.query)
   loadSeries(page.value || 1)
   loadProfileMeta()
@@ -767,6 +856,11 @@ onBeforeUnmount(() => {
   if (searchDebounceTimer !== null) {
     clearTimeout(searchDebounceTimer)
     searchDebounceTimer = null
+  }
+
+  if (tagsLayoutObserver) {
+    tagsLayoutObserver.disconnect()
+    tagsLayoutObserver = null
   }
 })
 
@@ -791,6 +885,11 @@ watch(searchInput, (value) => {
 watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort, page], () => {
   syncStateToQuery()
 })
+
+watch([availableTags, visibleTagRows], async () => {
+  await nextTick()
+  recalcTagRowsLayout()
+}, { immediate: true })
 
 function toggleMobileFilters() {
   showMobileFilters.value = !showMobileFilters.value
@@ -899,18 +998,42 @@ function toggleMobileFilters() {
 
           <section class="filter-group">
             <h3>Теги</h3>
-            <div class="chip-row chips-wrap">
-              <button
-                v-for="tag in availableTags"
-                :key="tag"
-                type="button"
-                class="tag-chip"
-                :class="{ active: selectedTags.includes(tag) }"
-                @click="toggleTag(tag)"
+            <div class="tags-cloud-shell">
+              <div
+                ref="tagsCloudRef"
+                class="chip-row chips-wrap tags-cloud"
+                :class="{ 'tags-cloud--collapsed': hasHiddenTagRows }"
+                :style="tagCloudStyle"
               >
-                #{{ tag }}
+                <button
+                  v-for="tag in availableTags"
+                  :key="tag"
+                  type="button"
+                  class="tag-chip"
+                  :class="{ active: selectedTags.includes(tag) }"
+                  @click="toggleTag(tag)"
+                >
+                  #{{ tag }}
+                </button>
+                <span v-if="!availableTags.length" class="hint">Нет тегов</span>
+              </div>
+
+              <div v-if="hasHiddenTagRows" class="tags-fade-overlay"></div>
+              <button
+                v-if="hasHiddenTagRows"
+                type="button"
+                class="tags-expand-btn"
+                title="Показать ещё"
+                @click="expandTagRows"
+              >
+                <span class="tags-chevron tags-chevron--down" aria-hidden="true"></span>
               </button>
-              <span v-if="!availableTags.length" class="hint">Нет тегов</span>
+            </div>
+
+            <div v-if="canCollapseTagRows" class="chip-row tags-collapse-row">
+              <button type="button" class="tags-expand-btn tags-collapse-btn" title="Свернуть" @click="collapseTagRows">
+                <span class="tags-chevron tags-chevron--up" aria-hidden="true"></span>
+              </button>
             </div>
           </section>
 
@@ -1245,6 +1368,90 @@ function toggleMobileFilters() {
 
 .chips-wrap {
   flex-wrap: wrap;
+}
+
+.tags-cloud-shell {
+  position: relative;
+  padding-bottom: 34px;
+}
+
+.tags-cloud {
+  transition: max-height 0.24s ease;
+}
+
+.tags-cloud--collapsed {
+  overflow: hidden;
+}
+
+.tags-fade-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 34px;
+  height: 96px;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(244, 245, 242, 0.04) 0%,
+      rgba(244, 245, 242, 0.7) 54%,
+      rgba(244, 245, 242, 0.98) 100%
+    );
+}
+
+.tags-expand-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(154, 198, 176, 0.25);
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tags-expand-btn:hover {
+  background: rgba(154, 198, 176, 0.38);
+}
+
+.tags-chevron {
+  width: 12px;
+  height: 12px;
+  border-right: 3px solid rgba(238, 244, 239, 0.95);
+  border-bottom: 3px solid rgba(238, 244, 239, 0.95);
+  border-radius: 2px;
+  display: block;
+}
+
+.tags-chevron--down {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.tags-chevron--up {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}
+
+.tags-collapse-row {
+  margin-top: 6px;
+  justify-content: center;
+}
+
+.tags-collapse-btn {
+  position: static;
+  transform: none;
+  width: 34px;
+  height: 24px;
+  background: #e3ebe4;
+}
+
+.tags-collapse-btn:hover {
+  background: #d5e5da;
 }
 
 .chip,
