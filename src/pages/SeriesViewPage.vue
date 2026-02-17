@@ -104,6 +104,14 @@ function resolvedPhotoUrl(photo) {
   return photo?.preview_url || photoUrl(photo?.path)
 }
 
+function resolvedPhotoFallbackUrl(photo) {
+  if (!photo?.preview_url) {
+    return ''
+  }
+
+  return photoUrl(photo?.path)
+}
+
 function formatDate(value) {
   if (!value) {
     return 'Без даты'
@@ -341,8 +349,8 @@ function openDeletePhotoModal(photo) {
   deletePhotoError.value = ''
 }
 
-function closeDeletePhotoModal() {
-  if (deletingPhoto.value) {
+function closeDeletePhotoModal(force = false) {
+  if (deletingPhoto.value && !force) {
     return
   }
 
@@ -428,23 +436,47 @@ async function deletePhoto(photo) {
 async function confirmDeletePhoto() {
   if (!item.value || !photoToDelete.value) return
 
+  const deletedPhotoId = Number(photoToDelete.value.id)
+  let deleted = false
   deletingPhoto.value = true
   deletePhotoError.value = ''
 
   try {
-    await api.delete(`/series/${item.value.id}/photos/${photoToDelete.value.id}`)
-
-    if (selectedPhoto.value?.id === photoToDelete.value.id) {
-      closePreview()
-    }
-
-    closeDeletePhotoModal()
-    await loadSeries()
+    await api.delete(`/series/${item.value.id}/photos/${deletedPhotoId}`)
+    deleted = true
   } catch (e) {
     deletePhotoError.value = e?.response?.data?.message || 'Не удалось удалить фото.'
   } finally {
     deletingPhoto.value = false
   }
+
+  if (!deleted) {
+    return
+  }
+
+  closeDeletePhotoModal(true)
+
+  if (selectedPhoto.value?.id === deletedPhotoId) {
+    closePreview()
+  }
+
+  // Apply immediate UI update so modal/list do not depend on follow-up reload.
+  if (item.value) {
+    const currentPhotos = Array.isArray(item.value.photos) ? item.value.photos : []
+    const nextPhotos = currentPhotos.filter((photo) => Number(photo?.id) !== deletedPhotoId)
+    const currentCount = Number(item.value.photos_count)
+    const nextCount = Number.isFinite(currentCount)
+      ? Math.max(0, currentCount - 1)
+      : nextPhotos.length
+
+    item.value = {
+      ...item.value,
+      photos: nextPhotos,
+      photos_count: nextCount,
+    }
+  }
+
+  loadSeries({ silent: true }).catch(() => {})
 }
 
 async function renamePhoto(photo) {
@@ -669,9 +701,13 @@ async function fetchTagSuggestions() {
   }
 }
 
-async function loadSeries() {
-  loading.value = true
-  error.value = ''
+async function loadSeries(options = {}) {
+  const silent = Boolean(options?.silent)
+
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+  }
 
   try {
     const { data } = await api.get(`/series/${route.params.id}`, {
@@ -683,9 +719,13 @@ async function loadSeries() {
 
     item.value = data.data
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Failed to load series.'
+    if (!silent) {
+      error.value = e?.response?.data?.message || 'Failed to load series.'
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -863,7 +903,11 @@ watch(() => route.params.id, () => {
             @dragend="onPhotoDragEnd"
             @click="openPreview(photo)"
           >
-            <LazyPhotoThumb :src="resolvedPhotoUrl(photo)" :alt="photo.original_name || 'photo'" />
+            <LazyPhotoThumb
+              :src="resolvedPhotoUrl(photo)"
+              :fallback-src="resolvedPhotoFallbackUrl(photo)"
+              :alt="photo.original_name || 'photo'"
+            />
             <div class="thumb-meta">
               <strong>#{{ photo.id }} {{ photo.original_name }}</strong>
               <div class="thumb-bottom">

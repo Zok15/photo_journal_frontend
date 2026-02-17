@@ -6,18 +6,24 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  fallbackSrc: {
+    type: String,
+    default: '',
+  },
   alt: {
     type: String,
     default: 'photo',
   },
 })
 
+const currentSrc = ref('')
 const loaded = ref(false)
 const failed = ref(false)
 
 watch(
-  () => props.src,
+  () => [props.src, props.fallbackSrc],
   () => {
+    currentSrc.value = props.src || props.fallbackSrc || ''
     loaded.value = false
     failed.value = false
   },
@@ -29,6 +35,14 @@ function onLoad() {
 }
 
 function onError() {
+  const fallback = String(props.fallbackSrc || '').trim()
+  if (fallback && currentSrc.value !== fallback) {
+    currentSrc.value = fallback
+    loaded.value = false
+    failed.value = false
+    return
+  }
+
   failed.value = true
   loaded.value = true
 }
@@ -37,10 +51,11 @@ function onError() {
 <template>
   <div class="thumb-wrap">
     <div v-if="!loaded" class="thumb-skeleton"></div>
+    <div v-if="loaded && failed" class="thumb-fallback">Фото недоступно</div>
     <img
       class="thumb"
-      :class="{ 'thumb--loaded': loaded, 'thumb--failed': failed }"
-      :src="src"
+      :class="{ 'thumb--loaded': loaded, 'thumb--failed': failed, 'thumb--hidden': failed }"
+      :src="currentSrc"
       :alt="alt"
       loading="lazy"
       decoding="async"
@@ -87,6 +102,20 @@ function onError() {
 
 .thumb--failed {
   filter: grayscale(0.25);
+}
+
+.thumb--hidden {
+  opacity: 0;
+}
+
+.thumb-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #5e6c62;
+  font-size: 13px;
+  background: linear-gradient(135deg, #ecf1ea 0%, #e4ebe1 100%);
 }
 
 @keyframes thumb-skeleton {
