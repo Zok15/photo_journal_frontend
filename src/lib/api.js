@@ -36,6 +36,30 @@ export function setAuthToken(token) {
 
 const originalGet = api.get.bind(api)
 
+function cachePayloadFromResponse(response) {
+  return {
+    data: response.data,
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  }
+}
+
+function fetchAndStoreGet(url, config, key) {
+  const request = originalGet(url, config)
+    .then((response) => {
+      setCachedResponse(key, cachePayloadFromResponse(response))
+      return response
+    })
+    .finally(() => {
+      clearInflightRequest(key)
+    })
+
+  setInflightRequest(key, request)
+
+  return request
+}
+
 api.get = function getWithCache(url, config = {}) {
   if (!shouldCacheRequest('get', url)) {
     return originalGet(url, config)
@@ -44,13 +68,18 @@ api.get = function getWithCache(url, config = {}) {
   const key = createGetCacheKey(url, config?.params)
   const cached = getCachedResponse(key)
   if (cached) {
+    if (!getInflightRequest(key)) {
+      // SWR: serve cached response immediately and refresh in background.
+      fetchAndStoreGet(url, config, key).catch(() => {})
+    }
+
     return Promise.resolve({
       data: cached.data,
       status: cached.status,
       statusText: cached.statusText,
       headers: cached.headers,
       config,
-      request: { fromCache: true },
+      request: { fromCache: true, staleWhileRevalidate: true },
     })
   }
 
@@ -59,22 +88,7 @@ api.get = function getWithCache(url, config = {}) {
     return inflight
   }
 
-  const request = originalGet(url, config)
-    .then((response) => {
-      setCachedResponse(key, {
-        data: response.data,
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      })
-      return response
-    })
-    .finally(() => {
-      clearInflightRequest(key)
-    })
-
-  setInflightRequest(key, request)
-  return request
+  return fetchAndStoreGet(url, config, key)
 }
 
 api.interceptors.response.use(
