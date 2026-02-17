@@ -785,32 +785,38 @@ async function loadSeriesPreviews(items) {
     return
   }
 
-  const entries = await Promise.all(items.map(async (entry) => {
-    try {
-      const { data } = await api.get(`/series/${entry.id}`, {
-        params: {
-          include_photos: 1,
-          photos_limit: Math.min(entry.photos_count || 30, 30),
-        },
-      })
-
-      const photos = (data?.data?.photos || [])
-        .map((photo) => ({
+  const entries = items.map((entry) => {
+    const photos = (entry?.preview_photos || [])
+      .map((photo) => {
+        const signedSrc = typeof photo?.preview_url === 'string' ? photo.preview_url : ''
+        const directSrc = photoUrl(photo?.path)
+        return {
           id: photo.id,
-          src: photo.preview_url || photoUrl(photo.path),
+          src: signedSrc || directSrc || '',
+          fallbackSrc: signedSrc && directSrc && signedSrc !== directSrc ? directSrc : '',
           alt: photo.original_name || `photo-${photo.id}`,
-        }))
-        .filter((photo) => photo.src)
+        }
+      })
+      .filter((photo) => photo.src)
 
-      return [entry.id, photos]
-    } catch (_) {
-      return [entry.id, []]
-    }
-  }))
+    return [entry.id, photos]
+  })
 
   seriesPreviews.value = Object.fromEntries(entries)
   const photos = Object.values(seriesPreviews.value).flat()
   await Promise.all(photos.map((photo) => ensurePreviewRatio(photo)))
+}
+
+function onPreviewImageError(event, photo) {
+  const target = event?.target
+  if (!(target instanceof HTMLImageElement)) {
+    return
+  }
+
+  const fallback = String(photo?.fallbackSrc || '').trim()
+  if (fallback && target.src !== fallback) {
+    target.src = fallback
+  }
 }
 
 async function createSeries() {
@@ -1245,6 +1251,7 @@ function toggleMobileFilters() {
                       class="preview-tile-image"
                       :src="tile.photo.src"
                       :alt="tile.photo.alt"
+                      @error="onPreviewImageError($event, tile.photo)"
                     />
                   </div>
                 </div>
