@@ -112,6 +112,16 @@ function mergeSeriesPayload(next) {
   }
 }
 
+function goBack() {
+  const back = window.history.state?.back
+  if (typeof back === 'string' && back.startsWith('/')) {
+    router.back()
+    return
+  }
+
+  router.push('/')
+}
+
 function photoUrl(path) {
   return buildStorageUrl(path)
 }
@@ -1047,7 +1057,7 @@ watch(previewGridRef, () => {
 <template>
   <div class="series-page">
     <div class="series-shell">
-      <p class="back-link"><RouterLink :to="canEditSeries ? '/series' : '/public/series'">← К списку серий</RouterLink></p>
+      <p class="back-link"><a href="/" @click.prevent="goBack">← Назад</a></p>
 
       <p v-if="loading" class="state-text">Загрузка...</p>
       <p v-else-if="error" class="error">{{ error }}</p>

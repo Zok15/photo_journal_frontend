@@ -1,8 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
+
+const route = useRoute()
+const router = useRouter()
 
 const series = ref([])
 const loading = ref(true)
@@ -328,6 +331,7 @@ function resetFilters() {
   selectedAuthorId.value = ''
   authorSearchInput.value = ''
   showAuthorSuggestions.value = false
+  updateAuthorQuery('')
   loadPublicSeries(1)
 }
 
@@ -360,6 +364,7 @@ function pickAuthorSuggestion(author) {
   selectedAuthorId.value = String(authorId)
   authorSearchInput.value = String(author?.name || '').trim()
   showAuthorSuggestions.value = false
+  updateAuthorQuery(selectedAuthorId.value)
   loadPublicSeries(1)
 }
 
@@ -367,6 +372,7 @@ function applyAuthorSuggestion() {
   if (!authorSuggestions.value.length) {
     if (!authorSearchInput.value.trim() && selectedAuthorId.value) {
       selectedAuthorId.value = ''
+      updateAuthorQuery('')
       loadPublicSeries(1)
     }
     return
@@ -386,7 +392,19 @@ function clearAuthorFilter() {
   selectedAuthorId.value = ''
   authorSearchInput.value = ''
   showAuthorSuggestions.value = false
+  updateAuthorQuery('')
   loadPublicSeries(1)
+}
+
+function updateAuthorQuery(authorId) {
+  const nextQuery = { ...route.query }
+  if (authorId) {
+    nextQuery.author_id = String(authorId)
+  } else {
+    delete nextQuery.author_id
+  }
+
+  router.replace({ query: nextQuery }).catch(() => {})
 }
 
 async function loadPublicSeries(targetPage = 1) {
@@ -435,6 +453,14 @@ async function loadPublicSeries(targetPage = 1) {
       : []
     availableAuthors.value = Array.isArray(data?.authors) ? data.authors : []
     suggestedAuthors.value = Array.isArray(data?.author_suggestions) ? data.author_suggestions : []
+    if (selectedAuthorId.value && !authorSearchInput.value.trim()) {
+      const selectedAuthor = availableAuthors.value.find(
+        (author) => String(author?.id) === String(selectedAuthorId.value),
+      )
+      if (selectedAuthor?.name) {
+        authorSearchInput.value = String(selectedAuthor.name)
+      }
+    }
     previewVersion.value = Date.now()
   } catch (e) {
     error.value = e?.response?.data?.message || 'Failed to load public series.'
@@ -498,6 +524,22 @@ watch(
   },
   { immediate: true },
 )
+
+watch(
+  () => route.query.author_id,
+  (authorIdFromQuery) => {
+    const normalized = String(authorIdFromQuery || '').trim()
+    if (normalized === String(selectedAuthorId.value || '')) {
+      return
+    }
+
+    selectedAuthorId.value = normalized
+    authorSearchInput.value = ''
+    loadPublicSeries(1)
+  },
+)
+
+selectedAuthorId.value = String(route.query.author_id || '').trim()
 
 loadPublicSeries()
 </script>
@@ -623,7 +665,12 @@ loadPublicSeries()
               <div class="series-meta">
                 <span>{{ formatDate(item.created_at) }}</span>
                 <span>{{ item.photos_count }} фото</span>
-                <span v-if="item.owner_name">Автор: {{ item.owner_name }}</span>
+                <span v-if="item.owner_name">
+                  Автор:
+                  <RouterLink class="author-link" :to="{ path: '/public/series', query: { ...route.query, author_id: String(item.user_id) } }">
+                    {{ item.owner_name }}
+                  </RouterLink>
+                </span>
               </div>
 
               <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
@@ -895,6 +942,16 @@ loadPublicSeries()
   flex-wrap: wrap;
   color: #657067;
   font-size: 14px;
+}
+
+.author-link {
+  color: #335e49;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.author-link:hover {
+  text-decoration: underline;
 }
 
 .series-desc {

@@ -1,10 +1,11 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { setCurrentUser } from '../lib/session'
 
+const router = useRouter()
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -68,6 +69,16 @@ async function saveProfile() {
   }
 }
 
+function goBack() {
+  const back = window.history.state?.back
+  if (typeof back === 'string' && back.startsWith('/')) {
+    router.back()
+    return
+  }
+
+  router.push('/')
+}
+
 onMounted(() => {
   loadProfile()
 })
@@ -76,7 +87,7 @@ onMounted(() => {
 <template>
   <div class="profile-page">
     <div class="profile-shell">
-      <p class="back-link"><RouterLink to="/series">← К списку серий</RouterLink></p>
+      <p class="back-link"><a href="/" @click.prevent="goBack">← Назад</a></p>
 
       <header class="profile-header">
         <h1>Личный кабинет</h1>
