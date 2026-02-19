@@ -922,6 +922,11 @@ async function createSeries() {
       createFilesInput.value.value = ''
     }
 
+    if (data?.id) {
+      await router.push(`/series/${data.id}`)
+      return
+    }
+
     await loadSeries(1)
   } catch (e) {
     createError.value = formatValidationError(e)
