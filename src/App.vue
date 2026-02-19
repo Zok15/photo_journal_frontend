@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from './lib/api'
 import { logout as performLogout } from './lib/logout'
-import { getUser, isAuthenticated } from './lib/session'
+import { getUser, isAuthenticated, setCurrentUser } from './lib/session'
 import { availableLocales, currentLocale, localeLabel, setLocale, t } from './lib/i18n'
 
 const signedIn = computed(() => isAuthenticated.value)
@@ -13,6 +13,30 @@ const journalMenuLabel = computed(() => {
 })
 const userMenuOpen = ref(false)
 const userMenuRef = ref(null)
+
+async function changeLocale(nextLocale) {
+  if (nextLocale === currentLocale.value) {
+    return
+  }
+
+  const previous = currentLocale.value
+  setLocale(nextLocale)
+
+  if (!signedIn.value) {
+    return
+  }
+
+  try {
+    const { data } = await api.patch('/profile', { locale: nextLocale })
+    const user = data?.data || null
+    if (user) {
+      setCurrentUser(user)
+    }
+  } catch (_) {
+    // Keep UI consistent with server profile if update fails.
+    setLocale(previous)
+  }
+}
 
 async function logout() {
   try {
@@ -82,7 +106,7 @@ onBeforeUnmount(() => {
             type="button"
             class="locale-btn"
             :class="{ 'locale-btn--active': currentLocale === loc }"
-            @click="setLocale(loc)"
+            @click="changeLocale(loc)"
           >
             {{ localeLabel(loc) }}
           </button>

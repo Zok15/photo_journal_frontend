@@ -4,7 +4,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { setCurrentUser } from '../lib/session'
-import { availableLocales, setLocale, t } from '../lib/i18n'
+import { t } from '../lib/i18n'
 
 const router = useRouter()
 const loading = ref(true)
@@ -15,7 +15,6 @@ const success = ref('')
 const form = ref({
   name: '',
   journal_title: '',
-  locale: 'ru',
 })
 
 function formatValidationError(err) {
@@ -33,7 +32,6 @@ async function loadProfile() {
 
     form.value.name = user.name || ''
     form.value.journal_title = user.journal_title || ''
-    form.value.locale = user.locale || 'ru'
     setCurrentUser(user)
   } catch (e) {
     error.value = e?.response?.data?.message || t('Failed to load profile.')
@@ -57,13 +55,11 @@ async function saveProfile() {
     const { data } = await api.patch('/profile', {
       name: form.value.name.trim(),
       journal_title: form.value.journal_title.trim() || null,
-      locale: form.value.locale || 'ru',
     })
 
     const user = data?.data || null
     if (user) {
       setCurrentUser(user)
-      setLocale(user.locale || 'ru')
     }
 
     success.value = t('Профиль обновлён.')
@@ -111,15 +107,6 @@ onMounted(() => {
         <label class="field">
           <span>{{ t('Название журнала') }}</span>
           <input v-model="form.journal_title" type="text" maxlength="255" :placeholder="t('Мой фотодневник')" />
-        </label>
-
-        <label class="field">
-          <span>{{ t('Язык интерфейса') }}</span>
-          <select v-model="form.locale">
-            <option v-for="loc in availableLocales" :key="loc" :value="loc">
-              {{ loc === 'ru' ? t('Русский') : t('Английский') }}
-            </option>
-          </select>
         </label>
 
         <p class="hint">{{ t('Текущее отображаемое название:') }} {{ form.journal_title || t('Фото Дневник') }}</p>
@@ -202,15 +189,6 @@ onMounted(() => {
 }
 
 .field input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 11px;
-  border: 1px solid #cfd6ce;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.field select {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 11px;
