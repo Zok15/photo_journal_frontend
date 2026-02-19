@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../pages/LoginPage.vue'
+import RegisterPage from '../pages/RegisterPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
@@ -10,6 +11,12 @@ const routes = [
     path: '/login',
     name: 'login',
     component: LoginPage,
+    meta: { guestOnly: true },
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: RegisterPage,
     meta: { guestOnly: true },
   },
   {

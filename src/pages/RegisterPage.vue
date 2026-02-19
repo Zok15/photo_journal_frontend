@@ -7,17 +7,25 @@ import { setSession } from '../lib/session'
 const route = useRoute()
 const router = useRouter()
 
+const name = ref('')
 const email = ref('')
 const password = ref('')
+const passwordConfirm = ref('')
 const loading = ref(false)
 const error = ref('')
 
 async function submit() {
+  if (password.value !== passwordConfirm.value) {
+    error.value = 'Пароли не совпадают.'
+    return
+  }
+
   loading.value = true
   error.value = ''
 
   try {
-    const { data } = await api.post('/auth/login', {
+    const { data } = await api.post('/auth/register', {
+      name: name.value,
       email: email.value,
       password: password.value,
     })
@@ -27,7 +35,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/series'
     router.push(redirect)
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Login failed.'
+    error.value = e?.response?.data?.message || 'Registration failed.'
   } finally {
     loading.value = false
   }
@@ -35,16 +43,21 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-page">
-    <section class="login-card">
-      <div class="login-brand">
+  <div class="register-page">
+    <section class="register-card">
+      <div class="register-brand">
         <img src="/logo.png" alt="Bird logo" class="brand-logo" />
         <p class="eyebrow">Фото Дневник</p>
       </div>
-      <h1>Вход в дневник</h1>
-      <p class="lead">Авторизация для работы с вашими сериями и фотографиями.</p>
+      <h1>Регистрация</h1>
+      <p class="lead">Создайте аккаунт для работы с вашими сериями и фотографиями.</p>
 
       <form class="form" @submit.prevent="submit">
+        <label class="field">
+          <span>Имя</span>
+          <input v-model="name" type="text" required maxlength="255" />
+        </label>
+
         <label class="field">
           <span>Email</span>
           <input v-model="email" type="email" required />
@@ -52,14 +65,19 @@ async function submit() {
 
         <label class="field">
           <span>Пароль</span>
-          <input v-model="password" type="password" required />
+          <input v-model="password" type="password" required minlength="8" />
+        </label>
+
+        <label class="field">
+          <span>Повторите пароль</span>
+          <input v-model="passwordConfirm" type="password" required minlength="8" />
         </label>
 
         <button type="submit" class="primary-btn" :disabled="loading">
-          {{ loading ? 'Входим...' : 'Войти' }}
+          {{ loading ? 'Создаем аккаунт...' : 'Зарегистрироваться' }}
         </button>
 
-        <p class="aux">Нет аккаунта? <RouterLink to="/register">Зарегистрироваться</RouterLink></p>
+        <p class="aux">Уже есть аккаунт? <RouterLink to="/login">Войти</RouterLink></p>
 
         <p v-if="error" class="error">{{ error }}</p>
       </form>
@@ -68,7 +86,7 @@ async function submit() {
 </template>
 
 <style scoped>
-.login-page {
+.register-page {
   min-height: calc(100vh - 58px);
   background:
     radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
@@ -79,7 +97,7 @@ async function submit() {
   padding: 24px;
 }
 
-.login-card {
+.register-card {
   width: min(460px, 100%);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -95,7 +113,7 @@ async function submit() {
   font-size: 13px;
 }
 
-.login-brand {
+.register-brand {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -107,7 +125,7 @@ async function submit() {
   display: block;
 }
 
-.login-card h1 {
+.register-card h1 {
   margin: 8px 0 6px;
   font-size: 34px;
   letter-spacing: -0.03em;

@@ -29,6 +29,7 @@ async function logout() {
         <RouterLink v-if="signedIn" to="/series" class="nav-link">Серии</RouterLink>
         <RouterLink v-if="signedIn" to="/profile" class="nav-link">Профиль</RouterLink>
         <RouterLink v-if="!signedIn" to="/login" class="nav-link">Вход</RouterLink>
+        <RouterLink v-if="!signedIn" to="/register" class="nav-link">Регистрация</RouterLink>
         <button v-if="signedIn" type="button" class="logout-btn" @click="logout">Выход</button>
       </nav>
     </header>
