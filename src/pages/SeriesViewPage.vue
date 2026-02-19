@@ -894,11 +894,6 @@ function scheduleTagSuggestions() {
 
 async function fetchTagSuggestions() {
   const query = String(newTagName.value || '').trim()
-  if (query.length < 1) {
-    tagSuggestions.value = []
-    tagSuggestionsLoading.value = false
-    return
-  }
 
   const requestId = ++tagSuggestRequestId
   tagSuggestionsLoading.value = true
@@ -906,7 +901,7 @@ async function fetchTagSuggestions() {
   try {
     const { data } = await api.get('/tags/suggest', {
       params: {
-        q: query,
+        q: query || undefined,
         limit: 8,
       },
     })
