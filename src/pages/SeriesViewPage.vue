@@ -6,6 +6,7 @@ import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
+import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
@@ -643,7 +644,7 @@ async function uploadPhotos() {
       formData.append('photos[]', file)
     }
 
-    const { data } = await api.post(`/series/${route.params.id}/photos`, formData)
+    const { data } = await api.post(`/series/${route.params.slug}/photos`, formData)
 
     uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
     uploadFiles.value = []
@@ -943,7 +944,7 @@ async function loadSeries(options = {}) {
 
     if (isAuthenticated.value) {
       try {
-        const response = await api.get(`/series/${route.params.id}`, {
+        const response = await api.get(`/series/${route.params.slug}`, {
           params: {
             include_photos: 1,
           },
@@ -957,7 +958,7 @@ async function loadSeries(options = {}) {
     }
 
     if (!data) {
-      const response = await api.get(`/public/series/${route.params.id}`, {
+      const response = await api.get(`/public/series/${route.params.slug}`, {
         params: {
           include_photos: 1,
         },
@@ -967,6 +968,10 @@ async function loadSeries(options = {}) {
 
     photoUrlVersion.value = Date.now()
     item.value = data.data
+    const canonical = seriesPath(data.data)
+    if (canonical !== route.path) {
+      router.replace(canonical).catch(() => {})
+    }
   } catch (e) {
     if (!silent) {
       if (e?.response?.status === 404) {
@@ -1032,7 +1037,7 @@ onBeforeUnmount(() => {
   }
 })
 
-watch(() => route.params.id, () => {
+watch(() => route.params.slug, () => {
   closePreview()
   loadProfileMeta().finally(() => {
     loadSeries()

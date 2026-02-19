@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
+import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { currentLocale, t } from '../lib/i18n'
 
@@ -802,8 +803,12 @@ watch([availableTags, visibleTagRows], async () => {
           <section v-else class="series-grid">
             <article v-for="item in series" :key="item.id" class="series-card">
               <header class="series-card-header">
-                <h2>{{ item.title }}</h2>
-                <RouterLink class="view-link" :to="`/series/${item.id}`">{{ t('Открыть') }}</RouterLink>
+                <h2>
+                  <RouterLink class="series-title-link" :to="seriesPath(item)">
+                    {{ item.title }}
+                  </RouterLink>
+                </h2>
+                <RouterLink class="view-link" :to="seriesPath(item)">{{ t('Открыть') }}</RouterLink>
               </header>
 
               <div class="series-meta">
@@ -1151,6 +1156,15 @@ watch([availableTags, visibleTagRows], async () => {
   margin: 0;
   font-size: 34px;
   line-height: 1;
+}
+
+.series-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.series-title-link:hover {
+  text-decoration: underline;
 }
 
 .view-link {

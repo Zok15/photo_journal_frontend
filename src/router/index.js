@@ -73,7 +73,7 @@ const routes = [
     },
   },
   {
-    path: '/series/:id',
+    path: '/series/:slug',
     name: 'series.view',
     component: SeriesViewPage,
     meta: {

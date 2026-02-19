@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
+import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { currentLocale, t } from '../lib/i18n'
@@ -923,7 +924,7 @@ async function createSeries() {
     }
 
     if (data?.id) {
-      await router.push(`/series/${data.id}`)
+      await router.push(seriesPath(data))
       return
     }
 
@@ -1445,11 +1446,11 @@ function toggleMobileFilters() {
             <article v-for="item in series" :key="item.id" class="series-card">
               <header class="series-card-header">
                 <h3>
-                  <RouterLink class="series-title-link" :to="`/series/${item.id}`">
+                  <RouterLink class="series-title-link" :to="seriesPath(item)">
                     {{ item.title }}
                   </RouterLink>
                 </h3>
-                <RouterLink class="view-link" :to="`/series/${item.id}`">{{ t('Открыть') }}</RouterLink>
+                <RouterLink class="view-link" :to="seriesPath(item)">{{ t('Открыть') }}</RouterLink>
               </header>
 
               <div class="series-meta">

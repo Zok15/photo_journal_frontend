@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
 import { currentLocale, t } from '../lib/i18n'
 import { isAuthenticated } from '../lib/session'
+import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 
 const signedIn = computed(() => isAuthenticated.value)
@@ -712,7 +713,7 @@ watch(
 
       <div v-else class="showcase-grid">
         <article v-for="item in showcaseSeries" :key="item.id" class="series-card">
-          <RouterLink class="series-card-link" :to="`/series/${item.id}`">
+          <RouterLink class="series-card-link" :to="seriesPath(item)">
             <div class="series-cover">
               <img
                 v-if="hasCover(item)"
