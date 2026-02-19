@@ -397,11 +397,7 @@ async function uploadPhotos() {
       formData.append('photos[]', file)
     }
 
-    const { data } = await api.post(`/series/${route.params.id}/photos`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const { data } = await api.post(`/series/${route.params.id}/photos`, formData)
 
     uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
     uploadFiles.value = []

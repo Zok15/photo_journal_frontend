@@ -910,11 +910,7 @@ async function createSeries() {
       formData.append('photos[]', file)
     }
 
-    const { data } = await api.post('/series', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const { data } = await api.post('/series', formData)
 
     createWarnings.value = [...warnings, ...(data.photos_failed || [])]
     createTitle.value = ''
