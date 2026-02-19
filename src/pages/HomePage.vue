@@ -12,7 +12,11 @@ const featuredSeries = ref([])
 const featuredLoading = ref(true)
 const featuredError = ref('')
 const previewVersion = ref(Date.now())
+const heroPhotoPool = ref([])
+const heroCacheVersion = ref(0)
 const HERO_MAX_POOL = 36
+const HERO_CACHE_TTL_MS = 20 * 60 * 1000
+const HERO_CACHE_KEY = 'home:hero:photo-pool:v1'
 const HERO_ROW_GAP = 8
 const HERO_INNER_VERTICAL_PADDING = 10
 const HERO_STACK_BREAKPOINT = 1100
@@ -26,6 +30,7 @@ const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 14
 const heroAspectRatios = ref({})
 const heroGridElements = new Set()
 let heroResizeObserver = null
+let heroRefreshTimerId = null
 
 const TAG_LABELS = {
   travel: { ru: 'Путешествия', en: 'Travel' },
@@ -49,6 +54,87 @@ function photoUrl(photo) {
   }
 
   return buildStorageUrl(photo?.path)
+}
+
+function collectHeroPhotosFromSeries(items) {
+  const seen = new Set()
+  const photos = []
+
+  items.forEach((item) => {
+    const previews = Array.isArray(item?.preview_photos) ? item.preview_photos : []
+    previews.forEach((photo, index) => {
+      const id = Number(photo?.id || 0) || `${item?.id || 'series'}-${index}`
+      const rawSrc = String(photo?.public_url || '').trim() || photoUrl(photo)
+      if (!rawSrc) {
+        return
+      }
+
+      const dedupeKey = `${id}:${rawSrc}`
+      if (seen.has(dedupeKey)) {
+        return
+      }
+
+      seen.add(dedupeKey)
+      photos.push({
+        id,
+        src: rawSrc,
+        alt: photo?.original_name || item?.title || `photo-${id}`,
+      })
+    })
+  })
+
+  return photos
+}
+
+function shufflePhotos(items) {
+  const shuffled = [...items]
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+
+  return shuffled
+}
+
+function readHeroCache() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(HERO_CACHE_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw)
+    const expiresAt = Number(parsed?.expires_at || 0)
+    const version = Number(parsed?.version || 0)
+    const photos = Array.isArray(parsed?.photos) ? parsed.photos : []
+    if (expiresAt <= Date.now() || version <= 0 || !photos.length) {
+      return null
+    }
+
+    return { version, photos }
+  } catch (_) {
+    return null
+  }
+}
+
+function writeHeroCache(version, photos) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(HERO_CACHE_KEY, JSON.stringify({
+      version,
+      expires_at: Date.now() + HERO_CACHE_TTL_MS,
+      photos,
+    }))
+  } catch (_) {
+    // Ignore localStorage errors (private mode/quota issues).
+  }
 }
 
 function coverUrl(item) {
@@ -135,38 +221,15 @@ const showcaseSeries = computed(() => {
 const isHeroStacked = computed(() => viewportWidth.value <= HERO_STACK_BREAKPOINT)
 
 const heroPhotos = computed(() => {
-  const seen = new Set()
-  const photos = []
+  const source = heroPhotoPool.value.length
+    ? heroPhotoPool.value
+    : collectHeroPhotosFromSeries(featuredSeries.value).slice(0, HERO_MAX_POOL)
+  const cacheVersion = heroCacheVersion.value > 0 ? heroCacheVersion.value : previewVersion.value
 
-  featuredSeries.value.forEach((item) => {
-    const previews = Array.isArray(item?.preview_photos) ? item.preview_photos : []
-    previews.forEach((photo, index) => {
-      if (photos.length >= HERO_MAX_POOL) {
-        return
-      }
-
-      const id = Number(photo?.id || 0) || `${item?.id || 'series'}-${index}`
-      const heroDirect = String(photo?.public_url || '').trim() || photoUrl(photo)
-      const src = withCacheBust(heroDirect, previewVersion.value)
-      if (!src) {
-        return
-      }
-
-      const dedupeKey = `${id}:${src}`
-      if (seen.has(dedupeKey)) {
-        return
-      }
-
-      seen.add(dedupeKey)
-      photos.push({
-        id,
-        src,
-        alt: photo?.original_name || item?.title || `photo-${id}`,
-      })
-    })
-  })
-
-  return photos
+  return source.map((photo) => ({
+    ...photo,
+    src: withCacheBust(photo.src, cacheVersion),
+  }))
 })
 
 async function ensureHeroRatio(photo) {
@@ -431,6 +494,63 @@ async function loadFeaturedSeries() {
   }
 }
 
+async function fetchPublicSeriesPages(perPage = 100) {
+  const first = await api.get('/public/series', {
+    params: { per_page: perPage, page: 1 },
+  })
+
+  const firstItems = Array.isArray(first?.data?.data) ? first.data.data : []
+  const lastPage = Math.max(1, Number(first?.data?.last_page || 1))
+  if (lastPage <= 1) {
+    return firstItems
+  }
+
+  const pageRequests = []
+  for (let page = 2; page <= lastPage; page += 1) {
+    pageRequests.push(
+      api.get('/public/series', {
+        params: { per_page: perPage, page },
+      }),
+    )
+  }
+
+  const pageResults = await Promise.allSettled(pageRequests)
+  const restItems = pageResults.flatMap((result) => {
+    if (result.status !== 'fulfilled') {
+      return []
+    }
+
+    return Array.isArray(result.value?.data?.data) ? result.value.data.data : []
+  })
+
+  return [...firstItems, ...restItems]
+}
+
+async function loadHeroPhotoPool() {
+  const cached = readHeroCache()
+  if (cached) {
+    heroPhotoPool.value = cached.photos
+    heroCacheVersion.value = cached.version
+    return
+  }
+
+  try {
+    const allSeries = await fetchPublicSeriesPages(100)
+    const randomizedPool = shufflePhotos(collectHeroPhotosFromSeries(allSeries))
+      .slice(0, HERO_MAX_POOL)
+    const version = Math.floor(Date.now() / HERO_CACHE_TTL_MS)
+    if (!randomizedPool.length) {
+      return
+    }
+
+    heroPhotoPool.value = randomizedPool
+    heroCacheVersion.value = version
+    writeHeroCache(version, randomizedPool)
+  } catch (_) {
+    // Keep fallback pool derived from featuredSeries.
+  }
+}
+
 onMounted(() => {
   heroResizeObserver = new ResizeObserver((entries) => {
     entries.forEach((entry) => {
@@ -452,6 +572,10 @@ onMounted(() => {
 
   window.addEventListener('resize', onViewportResize, { passive: true })
   onViewportResize()
+  loadHeroPhotoPool()
+  heroRefreshTimerId = window.setInterval(() => {
+    loadHeroPhotoPool()
+  }, HERO_CACHE_TTL_MS)
   loadFeaturedSeries()
 })
 
@@ -463,6 +587,10 @@ onBeforeUnmount(() => {
 
   window.removeEventListener('resize', onViewportResize)
   heroGridElements.clear()
+  if (heroRefreshTimerId !== null) {
+    window.clearInterval(heroRefreshTimerId)
+    heroRefreshTimerId = null
+  }
 })
 
 watch(
