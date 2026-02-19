@@ -603,7 +603,7 @@ watch(
                 <span>{{ formatPhotoCount(item.photos_count) }}</span>
                 <span v-if="item.author_name">{{ item.author_name }}</span>
               </p>
-              <p class="description">{{ item.description || t('Описание пока не добавлено.') }}</p>
+              <p v-if="item.description" class="description">{{ item.description }}</p>
             </div>
           </RouterLink>
         </article>

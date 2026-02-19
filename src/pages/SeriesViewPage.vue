@@ -1089,7 +1089,7 @@ watch(previewGridRef, () => {
           </div>
         </header>
 
-        <p class="series-description">{{ item.description || t('Описание пока не добавлено.') }}</p>
+        <p v-if="item.description" class="series-description">{{ item.description }}</p>
         <div class="series-tags">
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}

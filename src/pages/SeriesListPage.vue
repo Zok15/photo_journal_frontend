@@ -1457,7 +1457,7 @@ function toggleMobileFilters() {
                 </span>
               </div>
 
-              <p class="series-desc">{{ item.description || t('Описание пока не добавлено.') }}</p>
+              <p v-if="item.description" class="series-desc">{{ item.description }}</p>
 
               <div
                 v-if="previewTiles(item.id).length"
