@@ -2,10 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from './lib/api'
 import { logout as performLogout } from './lib/logout'
-import { isAuthenticated } from './lib/session'
+import { getUser, isAuthenticated } from './lib/session'
 import { availableLocales, currentLocale, localeLabel, setLocale, t } from './lib/i18n'
 
 const signedIn = computed(() => isAuthenticated.value)
+const currentUser = computed(() => getUser())
+const journalMenuLabel = computed(() => {
+  const title = String(currentUser.value?.journal_title || '').trim()
+  return title || t('Мой фотодневник')
+})
 const userMenuOpen = ref(false)
 const userMenuRef = ref(null)
 
@@ -99,7 +104,7 @@ onBeforeUnmount(() => {
           </button>
 
           <div v-if="userMenuOpen" class="user-menu-dropdown">
-            <RouterLink to="/series" class="user-menu-item" @click="onUserMenuAction">{{ t('Серии') }}</RouterLink>
+            <RouterLink to="/series" class="user-menu-item" @click="onUserMenuAction">{{ journalMenuLabel }}</RouterLink>
             <RouterLink to="/profile" class="user-menu-item" @click="onUserMenuAction">{{ t('Профиль') }}</RouterLink>
             <button type="button" class="user-menu-item user-menu-item--danger" @click="logout">{{ t('Выход') }}</button>
           </div>
