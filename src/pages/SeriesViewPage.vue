@@ -9,6 +9,7 @@ import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { findInvalidUploadFile } from '../lib/uploadPolicy'
 import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
+import { currentLocale, t } from '../lib/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -316,15 +317,16 @@ function syncPreviewGridObserver() {
 
 function formatDate(value) {
   if (!value) {
-    return 'Без даты'
+    return t('Без даты')
   }
 
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
-    return 'Без даты'
+    return t('Без даты')
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
+  const locale = currentLocale.value === 'en' ? 'en-US' : 'ru-RU'
+  return new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -384,7 +386,7 @@ function cancelEditSeries() {
 async function saveSeries() {
   if (!item.value || !canEditSeries.value) return
   if (!editTitle.value.trim()) {
-    editError.value = 'Название обязательно.'
+    editError.value = t('Название обязательно.')
     return
   }
 
@@ -547,7 +549,7 @@ async function onPhotoDrop(targetPhoto) {
       ...item.value,
       photos: previousOrder,
     }
-    photoOrderError.value = e?.response?.data?.message || 'Не удалось сохранить порядок фото.'
+    photoOrderError.value = e?.response?.data?.message || t('Не удалось сохранить порядок фото.')
   } finally {
     reorderingPhotos.value = false
     onPhotoDragEnd()
@@ -600,7 +602,7 @@ async function deleteSeries() {
     showDeleteSeriesModal.value = false
     await router.push('/series')
   } catch (e) {
-    deleteSeriesError.value = e?.response?.data?.message || 'Не удалось удалить серию.'
+    deleteSeriesError.value = e?.response?.data?.message || t('Не удалось удалить серию.')
   } finally {
     deletingSeries.value = false
   }
@@ -675,7 +677,7 @@ async function confirmDeletePhoto() {
     await api.delete(`/series/${item.value.id}/photos/${deletedPhotoId}`)
     deleted = true
   } catch (e) {
-    deletePhotoError.value = e?.response?.data?.message || 'Не удалось удалить фото.'
+    deletePhotoError.value = e?.response?.data?.message || t('Не удалось удалить фото.')
   } finally {
     deletingPhoto.value = false
   }
@@ -718,7 +720,7 @@ async function renamePhoto(photo) {
   const currentBaseName = dotIndex > 0 ? currentName.slice(0, dotIndex) : currentName || String(photo.id)
 
   const nextName = window.prompt(
-    `Новое название файла (расширение .${currentExtension} менять нельзя)`,
+    t('Новое название файла (расширение .{ext} менять нельзя)', { ext: currentExtension }),
     currentBaseName
   )
   if (nextName === null) return
@@ -733,7 +735,7 @@ async function renamePhoto(photo) {
 
     await loadSeries()
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Не удалось переименовать фото.'
+    error.value = e?.response?.data?.message || t('Не удалось переименовать фото.')
   }
 }
 
@@ -771,7 +773,7 @@ function downloadPhotoOriginal(photo) {
     document.body.removeChild(link)
     URL.revokeObjectURL(blobUrl)
   }).catch((e) => {
-    error.value = e?.response?.data?.message || 'Не удалось скачать оригинал фото.'
+    error.value = e?.response?.data?.message || t('Не удалось скачать оригинал фото.')
   })
 }
 
@@ -791,20 +793,20 @@ async function refreshAutoTags() {
     const visionHealthy = Boolean(data?.data?.vision_healthy)
 
     refreshTagsInfo.value = failed > 0
-      ? `Теги обновлены для ${processed} фото, ошибок: ${failed}.`
-      : `Теги обновлены для ${processed} фото.`
+      ? t('Теги обновлены для {processed} фото, ошибок: {failed}.', { processed, failed })
+      : t('Теги обновлены для {processed} фото.', { processed })
 
     if (tagsCount === 0) {
       if (!visionEnabled) {
-        refreshTagsInfo.value = `${refreshTagsInfo.value} Vision-теггер выключен (VISION_TAGGER_ENABLED=false).`
+        refreshTagsInfo.value = `${refreshTagsInfo.value} ${t('Vision-теггер выключен (VISION_TAGGER_ENABLED=false).')}`
       } else if (!visionHealthy) {
-        refreshTagsInfo.value = `${refreshTagsInfo.value} Vision-теггер недоступен по сети.`
+        refreshTagsInfo.value = `${refreshTagsInfo.value} ${t('Vision-теггер недоступен по сети.')}`
       }
     }
 
     await loadSeries()
   } catch (e) {
-    refreshTagsError.value = e?.response?.data?.message || 'Не удалось обновить теги.'
+    refreshTagsError.value = e?.response?.data?.message || t('Не удалось обновить теги.')
   } finally {
     refreshingTags.value = false
   }
@@ -815,7 +817,7 @@ async function addSeriesTag() {
 
   const prepared = String(newTagName.value || '').trim()
   if (!prepared) {
-    tagEditError.value = 'Введите тег.'
+    tagEditError.value = t('Введите тег.')
     return
   }
 
@@ -867,7 +869,7 @@ async function removeSeriesTag(tag) {
     const { data } = await api.delete(`/series/${item.value.id}/tags/${tag.id}`)
     item.value = mergeSeriesPayload(data?.data)
   } catch (e) {
-    tagEditError.value = e?.response?.data?.message || 'Не удалось удалить тег.'
+    tagEditError.value = e?.response?.data?.message || t('Не удалось удалить тег.')
   } finally {
     removingTagId.value = null
   }
@@ -972,9 +974,9 @@ async function loadSeries(options = {}) {
   } catch (e) {
     if (!silent) {
       if (e?.response?.status === 404) {
-        error.value = 'Серия не найдена или не является публичной.'
+        error.value = t('Серия не найдена или не является публичной.')
       } else {
-        error.value = e?.response?.data?.message || 'Failed to load series.'
+        error.value = e?.response?.data?.message || t('Failed to load series.')
       }
     }
   } finally {
@@ -1057,9 +1059,9 @@ watch(previewGridRef, () => {
 <template>
   <div class="series-page">
     <div class="series-shell">
-      <p class="back-link"><a href="/" @click.prevent="goBack">← Назад</a></p>
+      <p class="back-link"><a href="/" @click.prevent="goBack">{{ t('← Назад') }}</a></p>
 
-      <p v-if="loading" class="state-text">Загрузка...</p>
+      <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
       <p v-else-if="error" class="error">{{ error }}</p>
 
       <template v-else-if="item">
@@ -1067,32 +1069,32 @@ watch(previewGridRef, () => {
           <div>
             <h1>{{ item.title }}</h1>
             <p class="series-meta">
-              {{ formatDate(item.created_at) }} · {{ item.photos_count }} фото
+              {{ formatDate(item.created_at) }} · {{ item.photos_count }} {{ t('фото') }}
               <span
                 class="series-visibility"
                 :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
               >
-                {{ item.is_public ? 'Публичная' : 'Приватная' }}
+                {{ item.is_public ? t('Публичная') : t('Приватная') }}
               </span>
             </p>
           </div>
           <div v-if="canEditSeries" class="series-actions">
             <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
-              {{ showUploadForm ? 'Скрыть форму' : 'Добавить фото' }}
+              {{ showUploadForm ? t('Скрыть форму') : t('Добавить фото') }}
             </button>
             <button type="button" class="ghost-btn" :disabled="refreshingTags" @click="refreshAutoTags">
-              {{ refreshingTags ? 'Обновляем теги...' : 'Обновить теги' }}
+              {{ refreshingTags ? t('Обновляем теги...') : t('Обновить теги') }}
             </button>
-            <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" title="Редактировать">
+            <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" :title="t('Редактировать')">
               ✎
             </button>
-            <button type="button" class="danger-btn icon-btn" @click="openDeleteSeriesModal" title="Удалить серию">
+            <button type="button" class="danger-btn icon-btn" @click="openDeleteSeriesModal" :title="t('Удалить серию')">
               🗑
             </button>
           </div>
         </header>
 
-        <p class="series-description">{{ item.description || 'Описание пока не добавлено.' }}</p>
+        <p class="series-description">{{ item.description || t('Описание пока не добавлено.') }}</p>
         <div class="series-tags">
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}
@@ -1127,7 +1129,7 @@ watch(previewGridRef, () => {
                 @input="scheduleTagSuggestions"
                 @focus="scheduleTagSuggestions"
               />
-              <div v-if="tagSuggestionsLoading" class="series-tag-suggest-hint">Поиск...</div>
+              <div v-if="tagSuggestionsLoading" class="series-tag-suggest-hint">{{ t('Поиск...') }}</div>
               <ul v-else-if="tagSuggestions.length" class="series-tag-suggestions">
                 <li v-for="name in tagSuggestions" :key="name">
                   <button type="button" @click="pickSuggestedTag(name)">#{{ name }}</button>
@@ -1147,7 +1149,7 @@ watch(previewGridRef, () => {
         <p v-if="tagEditError" class="error">{{ tagEditError }}</p>
 
         <section v-if="canEditSeries && showUploadForm" class="upload-panel">
-          <h2>Добавить фото</h2>
+          <h2>{{ t('Добавить фото') }}</h2>
 
           <form class="upload-form" @submit.prevent="uploadPhotos">
             <input
@@ -1159,8 +1161,8 @@ watch(previewGridRef, () => {
               @change="onUploadFilesChanged"
             />
 
-            <small class="hint">Оптимизация перед отправкой: до 2MB на файл.</small>
-            <small class="hint" v-if="uploadFiles.length">Выбрано: {{ uploadFiles.length }} файл(ов)</small>
+            <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB на файл.') }}</small>
+            <small class="hint" v-if="uploadFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: uploadFiles.length }) }}</small>
 
             <p v-if="uploadError" class="error">{{ uploadError }}</p>
 
@@ -1171,34 +1173,34 @@ watch(previewGridRef, () => {
             </ul>
 
             <button type="submit" class="primary-btn" :disabled="uploading">
-              {{ uploading ? 'Загрузка...' : 'Загрузить фото' }}
+              {{ uploading ? t('Загрузка...') : t('Загрузить фото') }}
             </button>
           </form>
         </section>
 
         <section v-if="canEditSeries && isEditingSeries" class="upload-panel">
-          <h2>Редактировать серию</h2>
+          <h2>{{ t('Редактировать серию') }}</h2>
           <form class="upload-form" @submit.prevent="saveSeries">
             <label>
-              Название
+              {{ t('Название') }}
               <input v-model="editTitle" type="text" maxlength="255" required />
             </label>
             <label>
-              Описание
+              {{ t('Описание') }}
               <textarea v-model="editDescription" rows="3"></textarea>
             </label>
             <label class="checkbox-field">
               <input v-model="editIsPublic" type="checkbox" />
-              <span>Публичная серия</span>
+              <span>{{ t('Публичная серия') }}</span>
             </label>
 
             <p v-if="editError" class="error">{{ editError }}</p>
 
             <div class="inline-actions">
               <button type="submit" class="primary-btn" :disabled="savingSeries">
-                {{ savingSeries ? 'Сохраняем...' : 'Сохранить' }}
+                {{ savingSeries ? t('Сохраняем...') : t('Сохранить') }}
               </button>
-              <button type="button" class="ghost-btn" @click="cancelEditSeries">Отмена</button>
+              <button type="button" class="ghost-btn" @click="cancelEditSeries">{{ t('Отмена') }}</button>
             </div>
           </form>
         </section>
@@ -1245,9 +1247,9 @@ watch(previewGridRef, () => {
                 <div class="thumb-bottom">
                   <span>{{ tile.photo.mime }} · {{ formatSize(tile.photo.size) }}</span>
                   <div class="thumb-actions">
-                    <button type="button" class="icon-ghost-btn" title="Скачать оригинал" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
-                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(tile.photo)">✎</button>
-                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(tile.photo)">🗑</button>
+                    <button type="button" class="icon-ghost-btn" :title="t('Скачать оригинал')" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
                   </div>
                 </div>
               </div>
@@ -1255,7 +1257,7 @@ watch(previewGridRef, () => {
           </div>
         </section>
 
-        <p v-else class="state-text">В этой серии пока нет фото.</p>
+      <p v-else class="state-text">{{ t('В этой серии пока нет фото.') }}</p>
       </template>
     </div>
 
@@ -1272,20 +1274,19 @@ watch(previewGridRef, () => {
 
     <div v-if="canEditSeries && showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
       <div class="confirm-modal">
-        <h2>Удалить серию?</h2>
+        <h2>{{ t('Удалить серию?') }}</h2>
         <p>
-          Серия <strong>{{ item?.title || 'Без названия' }}</strong> будет удалена без возможности
-          восстановления.
+          {{ t('Серия') }} <strong>{{ item?.title || t('Без названия') }}</strong> {{ t('будет удалена без возможности восстановления.') }}
         </p>
 
         <p v-if="deleteSeriesError" class="error">{{ deleteSeriesError }}</p>
 
         <div class="confirm-actions">
           <button type="button" class="danger-btn" :disabled="deletingSeries" @click="deleteSeries">
-            {{ deletingSeries ? 'Удаляем...' : 'Удалить навсегда' }}
+            {{ deletingSeries ? t('Удаляем...') : t('Удалить навсегда') }}
           </button>
           <button type="button" class="ghost-btn" :disabled="deletingSeries" @click="closeDeleteSeriesModal">
-            Отмена
+            {{ t('Отмена') }}
           </button>
         </div>
       </div>
@@ -1293,21 +1294,21 @@ watch(previewGridRef, () => {
 
     <div v-if="canEditSeries && showDeletePhotoModal" class="confirm-overlay" @click.self="closeDeletePhotoModal">
       <div class="confirm-modal">
-        <h2>Удалить фото?</h2>
+        <h2>{{ t('Удалить фото?') }}</h2>
         <p>
-          Фото
+          {{ t('Фото') }}
           <strong>{{ photoToDelete?.original_name || `#${photoToDelete?.id || ''}` }}</strong>
-          будет удалено без возможности восстановления.
+          {{ t('будет удалено без возможности восстановления.') }}
         </p>
 
         <p v-if="deletePhotoError" class="error">{{ deletePhotoError }}</p>
 
         <div class="confirm-actions">
           <button type="button" class="danger-btn" :disabled="deletingPhoto" @click="confirmDeletePhoto">
-            {{ deletingPhoto ? 'Удаляем...' : 'Удалить навсегда' }}
+            {{ deletingPhoto ? t('Удаляем...') : t('Удалить навсегда') }}
           </button>
           <button type="button" class="ghost-btn" :disabled="deletingPhoto" @click="closeDeletePhotoModal">
-            Отмена
+            {{ t('Отмена') }}
           </button>
         </div>
       </div>

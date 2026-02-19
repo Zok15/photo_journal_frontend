@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { setCurrentUser } from '../lib/session'
+import { availableLocales, setLocale, t } from '../lib/i18n'
 
 const router = useRouter()
 const loading = ref(true)
@@ -14,10 +15,11 @@ const success = ref('')
 const form = ref({
   name: '',
   journal_title: '',
+  locale: 'ru',
 })
 
 function formatValidationError(err) {
-  return formatValidationErrorMessage(err, 'Request failed.')
+  return formatValidationErrorMessage(err, t('Request failed.'))
 }
 
 async function loadProfile() {
@@ -31,9 +33,10 @@ async function loadProfile() {
 
     form.value.name = user.name || ''
     form.value.journal_title = user.journal_title || ''
+    form.value.locale = user.locale || 'ru'
     setCurrentUser(user)
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Failed to load profile.'
+    error.value = e?.response?.data?.message || t('Failed to load profile.')
   } finally {
     loading.value = false
   }
@@ -44,7 +47,7 @@ async function saveProfile() {
   error.value = ''
 
   if (!form.value.name.trim()) {
-    error.value = 'Имя обязательно.'
+    error.value = t('Имя обязательно.')
     return
   }
 
@@ -54,14 +57,16 @@ async function saveProfile() {
     const { data } = await api.patch('/profile', {
       name: form.value.name.trim(),
       journal_title: form.value.journal_title.trim() || null,
+      locale: form.value.locale || 'ru',
     })
 
     const user = data?.data || null
     if (user) {
       setCurrentUser(user)
+      setLocale(user.locale || 'ru')
     }
 
-    success.value = 'Профиль обновлён.'
+    success.value = t('Профиль обновлён.')
   } catch (e) {
     error.value = formatValidationError(e)
   } finally {
@@ -87,37 +92,46 @@ onMounted(() => {
 <template>
   <div class="profile-page">
     <div class="profile-shell">
-      <p class="back-link"><a href="/" @click.prevent="goBack">← Назад</a></p>
+      <p class="back-link"><a href="/" @click.prevent="goBack">{{ t('← Назад') }}</a></p>
 
       <header class="profile-header">
-        <h1>Личный кабинет</h1>
-        <p class="lead">Настройки имени и названия вашего журнала.</p>
+        <h1>{{ t('Личный кабинет') }}</h1>
+        <p class="lead">{{ t('Настройки имени и названия вашего журнала.') }}</p>
       </header>
 
-      <p v-if="loading" class="state-text">Загрузка...</p>
+      <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
       <p v-else-if="error" class="error">{{ error }}</p>
 
       <form v-else class="form" @submit.prevent="saveProfile">
         <label class="field">
-          <span>Имя</span>
+          <span>{{ t('Имя') }}</span>
           <input v-model="form.name" type="text" maxlength="255" required />
         </label>
 
         <label class="field">
-          <span>Название журнала</span>
-          <input v-model="form.journal_title" type="text" maxlength="255" placeholder="Мой фотодневник" />
+          <span>{{ t('Название журнала') }}</span>
+          <input v-model="form.journal_title" type="text" maxlength="255" :placeholder="t('Мой фотодневник')" />
         </label>
 
-        <p class="hint">Текущее отображаемое название: {{ form.journal_title || 'Фото Дневник' }}</p>
+        <label class="field">
+          <span>{{ t('Язык интерфейса') }}</span>
+          <select v-model="form.locale">
+            <option v-for="loc in availableLocales" :key="loc" :value="loc">
+              {{ loc === 'ru' ? t('Русский') : t('Английский') }}
+            </option>
+          </select>
+        </label>
+
+        <p class="hint">{{ t('Текущее отображаемое название:') }} {{ form.journal_title || t('Фото Дневник') }}</p>
 
         <p v-if="success" class="success">{{ success }}</p>
         <p v-if="error" class="error">{{ error }}</p>
 
         <div class="actions-row">
           <button type="submit" class="primary-btn" :disabled="saving">
-            {{ saving ? 'Сохраняем...' : 'Сохранить' }}
+            {{ saving ? t('Сохраняем...') : t('Сохранить') }}
           </button>
-          <RouterLink class="ghost-btn" to="/series">Назад</RouterLink>
+          <RouterLink class="ghost-btn" to="/series">{{ t('Назад') }}</RouterLink>
         </div>
       </form>
     </div>
@@ -188,6 +202,15 @@ onMounted(() => {
 }
 
 .field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #cfd6ce;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.field select {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 11px;

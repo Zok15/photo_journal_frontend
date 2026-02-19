@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
+import { currentLocale, t } from '../lib/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,15 +67,17 @@ const authorSuggestions = computed(() => {
 
 function formatDate(value) {
   if (!value) {
-    return 'Без даты'
+    return t('Без даты')
   }
 
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
-    return 'Без даты'
+    return t('Без даты')
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
+  const locale = currentLocale.value === 'en' ? 'en-US' : 'ru-RU'
+
+  return new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -463,7 +466,7 @@ async function loadPublicSeries(targetPage = 1) {
     }
     previewVersion.value = Date.now()
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Failed to load public series.'
+    error.value = e?.response?.data?.message || t('Failed to load public series.')
   } finally {
     loading.value = false
   }
@@ -548,27 +551,27 @@ loadPublicSeries()
   <div class="public-page">
     <div class="public-shell">
       <header class="public-header">
-        <h1>Публичные серии</h1>
+        <h1>{{ t('Публичные серии') }}</h1>
       </header>
 
       <div class="public-layout">
         <aside class="filters-panel">
           <section class="filter-group">
-            <h3>Поиск</h3>
+            <h3>{{ t('Поиск') }}</h3>
             <form class="search-form" @submit.prevent="submitSearch">
-              <input v-model="searchInput" type="text" placeholder="Название или описание" />
-              <button type="submit" class="ghost-btn">Найти</button>
+              <input v-model="searchInput" type="text" :placeholder="t('Название или описание')" />
+              <button type="submit" class="ghost-btn">{{ t('Найти') }}</button>
             </form>
           </section>
 
           <section class="filter-group">
-            <h3>Автор</h3>
+            <h3>{{ t('Автор') }}</h3>
             <div class="author-search-wrap">
               <input
                 v-model="authorSearchInput"
                 type="text"
                 class="author-search-input"
-                placeholder="Начните вводить имя автора..."
+                :placeholder="t('Начните вводить имя автора...')"
                 @input="onAuthorInput"
                 @focus="openAuthorSuggestions"
                 @blur="closeAuthorSuggestions"
@@ -583,7 +586,7 @@ loadPublicSeries()
                   <button type="button" @mousedown.prevent @click="pickAuthorSuggestion(author)">
                     <span>{{ author.name }}</span>
                     <small v-if="!authorSearchInput.trim() && author.series_count" class="author-suggestion-meta">
-                      {{ author.series_count }} за {{ author.period_days }} дн.
+                      {{ author.series_count }} {{ t('за') }} {{ author.period_days }} {{ t('дн.') }}
                     </small>
                   </button>
                 </li>
@@ -592,7 +595,7 @@ loadPublicSeries()
                 v-else-if="showAuthorSuggestions && authorSearchInput.trim() && !authorSuggestions.length"
                 class="author-suggest-empty"
               >
-                Ничего не найдено
+                {{ t('Ничего не найдено') }}
               </p>
             </div>
             <button
@@ -601,12 +604,12 @@ loadPublicSeries()
               class="ghost-btn author-reset-btn"
               @click="clearAuthorFilter"
             >
-              Все авторы
+              {{ t('Все авторы') }}
             </button>
           </section>
 
           <section class="filter-group">
-            <h3>Теги</h3>
+            <h3>{{ t('Теги') }}</h3>
             <div class="chip-row">
               <button
                 v-for="tag in availableTags"
@@ -622,58 +625,58 @@ loadPublicSeries()
           </section>
 
           <section class="filter-group">
-            <h3>Дата</h3>
+            <h3>{{ t('Дата') }}</h3>
             <label class="date-label">
-              От
+              {{ t('От') }}
               <input v-model="dateFrom" type="date" @change="loadPublicSeries(1)" />
             </label>
             <label class="date-label">
-              До
+              {{ t('До') }}
               <input v-model="dateTo" type="date" @change="loadPublicSeries(1)" />
             </label>
           </section>
 
           <section class="filter-group">
-            <h3>Сортировка</h3>
+            <h3>{{ t('Сортировка') }}</h3>
             <div class="chip-row">
               <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'; loadPublicSeries(1)">
-                Новые
+                {{ t('Новые') }}
               </button>
               <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'; loadPublicSeries(1)">
-                Старые
+                {{ t('Старые') }}
               </button>
             </div>
           </section>
 
           <button v-if="hasActiveFilters" type="button" class="ghost-btn reset-btn" @click="resetFilters">
-            Сбросить фильтры
+            {{ t('Сбросить фильтры') }}
           </button>
         </aside>
 
         <main class="content-panel">
-          <p v-if="loading" class="state-text">Загрузка...</p>
+          <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
           <p v-else-if="error" class="error">{{ error }}</p>
-          <p v-else-if="!series.length" class="state-text">Публичные серии не найдены.</p>
+          <p v-else-if="!series.length" class="state-text">{{ t('Публичные серии не найдены.') }}</p>
 
           <section v-else class="series-grid">
             <article v-for="item in series" :key="item.id" class="series-card">
               <header class="series-card-header">
                 <h2>{{ item.title }}</h2>
-                <RouterLink class="view-link" :to="`/series/${item.id}`">Открыть</RouterLink>
+                <RouterLink class="view-link" :to="`/series/${item.id}`">{{ t('Открыть') }}</RouterLink>
               </header>
 
               <div class="series-meta">
                 <span>{{ formatDate(item.created_at) }}</span>
-                <span>{{ item.photos_count }} фото</span>
+                <span>{{ item.photos_count }} {{ t('фото') }}</span>
                 <span v-if="item.owner_name">
-                  Автор:
+                  {{ t('Автор') }}:
                   <RouterLink class="author-link" :to="{ path: '/public/series', query: { ...route.query, author_id: String(item.user_id) } }">
                     {{ item.owner_name }}
                   </RouterLink>
                 </span>
               </div>
 
-              <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
+              <p class="series-desc">{{ item.description || t('Описание пока не добавлено.') }}</p>
 
               <div
                 v-if="previewTiles(item.id).length"
@@ -714,9 +717,9 @@ loadPublicSeries()
           </section>
 
           <div class="pager" v-if="!loading && !error && lastPage > 1">
-            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">Назад</button>
-            <span>Страница {{ page }} / {{ lastPage }}</span>
-            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">Вперёд</button>
+            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">{{ t('Назад') }}</button>
+            <span>{{ t('Страница') }} {{ page }} / {{ lastPage }}</span>
+            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">{{ t('Вперёд') }}</button>
           </div>
         </main>
       </div>

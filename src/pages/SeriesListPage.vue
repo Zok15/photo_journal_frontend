@@ -8,6 +8,7 @@ import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { findInvalidUploadFile } from '../lib/uploadPolicy'
+import { currentLocale, t } from '../lib/i18n'
 
 const series = ref([])
 const loading = ref(true)
@@ -53,20 +54,14 @@ const calendarMonthCursor = ref(new Date(new Date().getFullYear(), new Date().ge
 const today = new Date()
 const todayMonth = today.getMonth()
 const todayYear = today.getFullYear()
-const calendarMonthOptions = [
-  { value: 0, label: 'Январь' },
-  { value: 1, label: 'Февраль' },
-  { value: 2, label: 'Март' },
-  { value: 3, label: 'Апрель' },
-  { value: 4, label: 'Май' },
-  { value: 5, label: 'Июнь' },
-  { value: 6, label: 'Июль' },
-  { value: 7, label: 'Август' },
-  { value: 8, label: 'Сентябрь' },
-  { value: 9, label: 'Октябрь' },
-  { value: 10, label: 'Ноябрь' },
-  { value: 11, label: 'Декабрь' },
-]
+const calendarMonthOptions = computed(() => {
+  const locale = currentLocale.value === 'en' ? 'en-US' : 'ru-RU'
+
+  return Array.from({ length: 12 }, (_, month) => ({
+    value: month,
+    label: new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date(2000, month, 1)),
+  }))
+})
 
 const createTitle = ref('')
 const createDescription = ref('')
@@ -90,7 +85,7 @@ let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
   const title = currentUser.value?.journal_title
-  return typeof title === 'string' && title.trim() ? title.trim() : 'Фото Дневник'
+  return typeof title === 'string' && title.trim() ? title.trim() : t('Фото Дневник')
 })
 
 const availableTags = computed(() => {
@@ -166,7 +161,7 @@ function toLocalDateKey(input) {
 const seriesDateKeys = computed(() => new Set(calendarMarkedDateKeys.value))
 
 const calendarMonthText = computed(() =>
-  new Intl.DateTimeFormat('ru-RU', { month: 'long' }).format(calendarMonthCursor.value)
+  new Intl.DateTimeFormat(currentLocale.value === 'en' ? 'en-US' : 'ru-RU', { month: 'long' }).format(calendarMonthCursor.value)
 )
 const calendarYearText = computed(() => String(calendarMonthCursor.value.getFullYear()))
 
@@ -336,15 +331,16 @@ function formatValidationError(err) {
 
 function formatDate(value) {
   if (!value) {
-    return 'No date'
+    return t('Без даты')
   }
 
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
-    return 'No date'
+    return t('Без даты')
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
+  const locale = currentLocale.value === 'en' ? 'en-US' : 'ru-RU'
+  return new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -1155,7 +1151,7 @@ function toggleMobileFilters() {
 
         <div class="header-actions">
           <button type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
-            {{ showCreateForm ? 'Закрыть форму' : 'Новая серия' }}
+            {{ showCreateForm ? t('Закрыть форму') : t('Новая серия') }}
           </button>
         </div>
       </header>
@@ -1168,23 +1164,23 @@ function toggleMobileFilters() {
           @click="toggleMobileFilters"
         >
           <span class="filters-toggle-icon">⚲</span>
-          {{ showMobileFilters ? 'Скрыть фильтры' : 'Фильтр' }}
+          {{ showMobileFilters ? t('Скрыть фильтры') : t('Фильтр') }}
         </button>
 
         <aside class="filters-panel" :class="{ 'filters-panel--mobile-open': showMobileFilters }">
-          <h2>Фильтры</h2>
+          <h2>{{ t('Фильтры') }}</h2>
 
           <section class="filter-group">
-            <h3>Дата</h3>
+            <h3>{{ t('Дата') }}</h3>
             <div class="filter-row filter-range">
               <label class="filter-label">
-                <span>От</span>
+                <span>{{ t('От') }}</span>
                 <div class="range-input-wrap">
                   <input
                     v-model="rangeFromText"
                     type="text"
                     inputmode="numeric"
-                    placeholder="дд.мм.гг"
+                    :placeholder="t('дд.мм.гг')"
                     @blur="applyRangeInput('from')"
                   />
                   <button type="button" class="range-picker-btn" @click="openNativePicker('from')">📅</button>
@@ -1197,13 +1193,13 @@ function toggleMobileFilters() {
                 </div>
               </label>
               <label class="filter-label">
-                <span>До</span>
+                <span>{{ t('До') }}</span>
                 <div class="range-input-wrap">
                   <input
                     v-model="rangeToText"
                     type="text"
                     inputmode="numeric"
-                    placeholder="дд.мм.гг"
+                    :placeholder="t('дд.мм.гг')"
                     @blur="applyRangeInput('to')"
                   />
                   <button type="button" class="range-picker-btn" @click="openNativePicker('to')">📅</button>
@@ -1218,7 +1214,7 @@ function toggleMobileFilters() {
             </div>
 
             <div class="chip-row filter-row">
-              <button type="button" class="chip" @click="clearDateRange">Очистить диапазон</button>
+              <button type="button" class="chip" @click="clearDateRange">{{ t('Очистить диапазон') }}</button>
             </div>
 
             <div class="filter-row calendar-widget">
@@ -1268,7 +1264,7 @@ function toggleMobileFilters() {
                 </div>
               </div>
               <div class="calendar-weekdays">
-                <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+                <span>{{ t('Пн') }}</span><span>{{ t('Вт') }}</span><span>{{ t('Ср') }}</span><span>{{ t('Чт') }}</span><span>{{ t('Пт') }}</span><span>{{ t('Сб') }}</span><span>{{ t('Вс') }}</span>
               </div>
               <div class="calendar-grid">
                 <button
@@ -1289,13 +1285,13 @@ function toggleMobileFilters() {
 
           <section class="filter-group">
             <div class="tags-head">
-              <h3>Теги</h3>
+              <h3>{{ t('Теги') }}</h3>
               <div class="tags-search-box">
                 <button
                   type="button"
                   class="tags-search-toggle"
-                  title="Поиск по тегам"
-                  aria-label="Поиск по тегам"
+                  :title="t('Поиск по тегам')"
+                  :aria-label="t('Поиск по тегам')"
                   @click="toggleTagSearch"
                 >
                   <svg
@@ -1325,7 +1321,7 @@ function toggleMobileFilters() {
                   type="text"
                   class="tags-search-input"
                   :class="{ 'tags-search-input--visible': showTagSearch }"
-                  placeholder="Найти тег..."
+                  :placeholder="t('Найти тег...')"
                 />
               </div>
             </div>
@@ -1347,7 +1343,7 @@ function toggleMobileFilters() {
                   #{{ tag }}
                 </button>
                 <span v-if="!filteredAvailableTags.length" class="hint">
-                  {{ availableTags.length ? 'Ничего не найдено' : 'Нет тегов' }}
+                  {{ availableTags.length ? t('Ничего не найдено') : t('Нет тегов') }}
                 </span>
               </div>
 
@@ -1356,7 +1352,7 @@ function toggleMobileFilters() {
                 v-if="hasHiddenTagRows"
                 type="button"
                 class="tags-expand-btn"
-                title="Показать ещё"
+                :title="t('Показать ещё')"
                 @click="expandTagRows"
               >
                 <span class="tags-chevron tags-chevron--down" aria-hidden="true"></span>
@@ -1364,20 +1360,20 @@ function toggleMobileFilters() {
             </div>
 
             <div v-if="canCollapseTagRows" class="chip-row tags-collapse-row">
-              <button type="button" class="tags-expand-btn tags-collapse-btn" title="Свернуть" @click="collapseTagRows">
+              <button type="button" class="tags-expand-btn tags-collapse-btn" :title="t('Свернуть')" @click="collapseTagRows">
                 <span class="tags-chevron tags-chevron--up" aria-hidden="true"></span>
               </button>
             </div>
           </section>
 
           <section class="filter-group">
-            <h3>Сортировка</h3>
+            <h3>{{ t('Сортировка') }}</h3>
             <div class="chip-row">
               <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'">
-                Новые
+                {{ t('Новые') }}
               </button>
               <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'">
-                Старые
+                {{ t('Старые') }}
               </button>
             </div>
           </section>
@@ -1385,26 +1381,26 @@ function toggleMobileFilters() {
 
         <main class="content-panel">
           <section v-if="showCreateForm" class="create-card">
-            <h2>Новая серия</h2>
+            <h2>{{ t('Новая серия') }}</h2>
 
             <form class="form" @submit.prevent="createSeries">
               <label>
-                Название
+                {{ t('Название') }}
                 <input v-model="createTitle" type="text" maxlength="255" required />
               </label>
 
               <label>
-                Описание
+                {{ t('Описание') }}
                 <textarea v-model="createDescription" rows="3"></textarea>
               </label>
 
               <label class="checkbox-field">
                 <input v-model="createIsPublic" type="checkbox" />
-                <span>Публичная серия</span>
+                <span>{{ t('Публичная серия') }}</span>
               </label>
 
               <label>
-                Фотографии
+                {{ t('Фотографии') }}
                 <input
                   ref="createFilesInput"
                   name="photos[]"
@@ -1414,8 +1410,8 @@ function toggleMobileFilters() {
                   @change="onCreateFilesChanged"
                 />
               </label>
-              <small class="hint">Оптимизация перед отправкой: до 2MB на файл.</small>
-              <small class="hint" v-if="createFiles.length">Выбрано: {{ createFiles.length }} файл(ов)</small>
+              <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB на файл.') }}</small>
+              <small class="hint" v-if="createFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: createFiles.length }) }}</small>
 
               <p v-if="createError" class="error">{{ createError }}</p>
 
@@ -1426,18 +1422,18 @@ function toggleMobileFilters() {
               </ul>
 
               <button type="submit" class="primary-btn" :disabled="creating">
-                {{ creating ? 'Сохраняем...' : 'Создать серию' }}
+                {{ creating ? t('Сохраняем...') : t('Создать серию') }}
               </button>
             </form>
           </section>
 
           <section class="search-row">
-            <input v-model="searchInput" type="text" placeholder="Искать по названию и описанию..." />
+            <input v-model="searchInput" type="text" :placeholder="t('Искать по названию и описанию...')" />
           </section>
 
-          <p v-if="loading" class="state-text">Загрузка...</p>
+          <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
           <p v-else-if="error" class="error">{{ error }}</p>
-          <p v-else-if="!series.length" class="state-text">Серии не найдены.</p>
+          <p v-else-if="!series.length" class="state-text">{{ t('Серии не найдены.') }}</p>
 
           <div v-else class="series-grid">
             <article v-for="item in series" :key="item.id" class="series-card">
@@ -1447,21 +1443,21 @@ function toggleMobileFilters() {
                     {{ item.title }}
                   </RouterLink>
                 </h3>
-                <RouterLink class="view-link" :to="`/series/${item.id}`">Открыть</RouterLink>
+                <RouterLink class="view-link" :to="`/series/${item.id}`">{{ t('Открыть') }}</RouterLink>
               </header>
 
               <div class="series-meta">
                 <span>{{ formatDate(item.created_at) }}</span>
-                <span>{{ item.photos_count }} фото</span>
+                <span>{{ item.photos_count }} {{ t('фото') }}</span>
                 <span
                   class="series-visibility"
                   :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
                 >
-                  {{ item.is_public ? 'Публичная' : 'Приватная' }}
+                  {{ item.is_public ? t('Публичная') : t('Приватная') }}
                 </span>
               </div>
 
-              <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
+              <p class="series-desc">{{ item.description || t('Описание пока не добавлено.') }}</p>
 
               <div
                 v-if="previewTiles(item.id).length"
@@ -1499,9 +1495,9 @@ function toggleMobileFilters() {
           </div>
 
           <div class="pager" v-if="!loading && !error && lastPage > 1">
-            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">Назад</button>
-            <span>Страница {{ page }} / {{ lastPage }}</span>
-            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">Вперёд</button>
+            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">{{ t('Назад') }}</button>
+            <span>{{ t('Страница') }} {{ page }} / {{ lastPage }}</span>
+            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">{{ t('Вперёд') }}</button>
           </div>
         </main>
       </div>

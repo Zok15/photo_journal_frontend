@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { setAuthToken } from './api'
+import { syncLocaleFromUser } from './i18n'
 
 const TOKEN_KEY = 'pj_token'
 
@@ -26,6 +27,7 @@ export function setSession(nextToken, nextUser = null) {
 
   localStorage.setItem(TOKEN_KEY, nextToken)
   setAuthToken(nextToken)
+  syncLocaleFromUser(nextUser)
 }
 
 export function clearSession() {
@@ -38,6 +40,7 @@ export function clearSession() {
 
 export function setCurrentUser(nextUser) {
   user.value = nextUser
+  syncLocaleFromUser(nextUser)
 }
 
 export const session = {

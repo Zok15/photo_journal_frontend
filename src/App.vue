@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { api } from './lib/api'
 import { logout as performLogout } from './lib/logout'
 import { isAuthenticated } from './lib/session'
+import { availableLocales, currentLocale, setLocale, t } from './lib/i18n'
 
 const signedIn = computed(() => isAuthenticated.value)
 
@@ -15,6 +16,10 @@ async function logout() {
 
   await performLogout({ reason: 'manual' })
 }
+
+function onLocaleChange(event) {
+  setLocale(event.target.value)
+}
 </script>
 
 <template>
@@ -26,12 +31,20 @@ async function logout() {
       </RouterLink>
 
       <nav class="app-nav">
-        <RouterLink to="/public/series" class="nav-link">Публичные</RouterLink>
-        <RouterLink v-if="signedIn" to="/series" class="nav-link">Серии</RouterLink>
-        <RouterLink v-if="signedIn" to="/profile" class="nav-link">Профиль</RouterLink>
-        <RouterLink v-if="!signedIn" to="/login" class="nav-link">Вход</RouterLink>
-        <RouterLink v-if="!signedIn" to="/register" class="nav-link">Регистрация</RouterLink>
-        <button v-if="signedIn" type="button" class="logout-btn" @click="logout">Выход</button>
+        <label class="locale-select-wrap">
+          <span class="locale-label">{{ t('Язык интерфейса') }}</span>
+          <select class="locale-select" :value="currentLocale" @change="onLocaleChange">
+            <option v-for="loc in availableLocales" :key="loc" :value="loc">
+              {{ loc === 'ru' ? t('Русский') : t('Английский') }}
+            </option>
+          </select>
+        </label>
+        <RouterLink to="/public/series" class="nav-link">{{ t('Публичные') }}</RouterLink>
+        <RouterLink v-if="signedIn" to="/series" class="nav-link">{{ t('Серии') }}</RouterLink>
+        <RouterLink v-if="signedIn" to="/profile" class="nav-link">{{ t('Профиль') }}</RouterLink>
+        <RouterLink v-if="!signedIn" to="/login" class="nav-link">{{ t('Вход') }}</RouterLink>
+        <RouterLink v-if="!signedIn" to="/register" class="nav-link">{{ t('Регистрация') }}</RouterLink>
+        <button v-if="signedIn" type="button" class="logout-btn" @click="logout">{{ t('Выход') }}</button>
       </nav>
     </header>
 
@@ -79,6 +92,27 @@ async function logout() {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.locale-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.locale-label {
+  font-size: 12px;
+  color: #55615a;
+}
+
+.locale-select {
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  background: #edf1ec;
+  color: #35403a;
+  font-weight: 700;
+  padding: 7px 8px;
+  line-height: 1;
 }
 
 .nav-link,

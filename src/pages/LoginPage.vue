@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { setSession } from '../lib/session'
+import { t } from '../lib/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +28,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/series'
     router.push(redirect)
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Login failed.'
+    error.value = e?.response?.data?.message || t('Login failed.')
   } finally {
     loading.value = false
   }
@@ -39,10 +40,10 @@ async function submit() {
     <section class="login-card">
       <div class="login-brand">
         <img src="/logo.png" alt="Bird logo" class="brand-logo" />
-        <p class="eyebrow">Фото Дневник</p>
+        <p class="eyebrow">{{ t('Фото Дневник') }}</p>
       </div>
-      <h1>Вход в дневник</h1>
-      <p class="lead">Авторизация для работы с вашими сериями и фотографиями.</p>
+      <h1>{{ t('Вход в дневник') }}</h1>
+      <p class="lead">{{ t('Авторизация для работы с вашими сериями и фотографиями.') }}</p>
 
       <form class="form" @submit.prevent="submit">
         <label class="field">
@@ -51,15 +52,15 @@ async function submit() {
         </label>
 
         <label class="field">
-          <span>Пароль</span>
+          <span>{{ t('Пароль') }}</span>
           <input v-model="password" type="password" required />
         </label>
 
         <button type="submit" class="primary-btn" :disabled="loading">
-          {{ loading ? 'Входим...' : 'Войти' }}
+          {{ loading ? t('Входим...') : t('Войти') }}
         </button>
 
-        <p class="aux">Нет аккаунта? <RouterLink to="/register">Зарегистрироваться</RouterLink></p>
+        <p class="aux">{{ t('Нет аккаунта?') }} <RouterLink to="/register">{{ t('Зарегистрироваться') }}</RouterLink></p>
 
         <p v-if="error" class="error">{{ error }}</p>
       </form>

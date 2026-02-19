@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { setSession } from '../lib/session'
+import { currentLocale, t } from '../lib/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,7 +17,7 @@ const error = ref('')
 
 async function submit() {
   if (password.value !== passwordConfirm.value) {
-    error.value = 'Пароли не совпадают.'
+    error.value = t('Пароли не совпадают.')
     return
   }
 
@@ -28,6 +29,7 @@ async function submit() {
       name: name.value,
       email: email.value,
       password: password.value,
+      locale: currentLocale.value,
     })
 
     setSession(data.token, data.user || null)
@@ -35,7 +37,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/series'
     router.push(redirect)
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Registration failed.'
+    error.value = e?.response?.data?.message || t('Registration failed.')
   } finally {
     loading.value = false
   }
@@ -47,14 +49,14 @@ async function submit() {
     <section class="register-card">
       <div class="register-brand">
         <img src="/logo.png" alt="Bird logo" class="brand-logo" />
-        <p class="eyebrow">Фото Дневник</p>
+        <p class="eyebrow">{{ t('Фото Дневник') }}</p>
       </div>
-      <h1>Регистрация</h1>
-      <p class="lead">Создайте аккаунт для работы с вашими сериями и фотографиями.</p>
+      <h1>{{ t('Регистрация') }}</h1>
+      <p class="lead">{{ t('Создайте аккаунт для работы с вашими сериями и фотографиями.') }}</p>
 
       <form class="form" @submit.prevent="submit">
         <label class="field">
-          <span>Имя</span>
+          <span>{{ t('Имя') }}</span>
           <input v-model="name" type="text" required maxlength="255" />
         </label>
 
@@ -64,20 +66,20 @@ async function submit() {
         </label>
 
         <label class="field">
-          <span>Пароль</span>
+          <span>{{ t('Пароль') }}</span>
           <input v-model="password" type="password" required minlength="8" />
         </label>
 
         <label class="field">
-          <span>Повторите пароль</span>
+          <span>{{ t('Повторите пароль') }}</span>
           <input v-model="passwordConfirm" type="password" required minlength="8" />
         </label>
 
         <button type="submit" class="primary-btn" :disabled="loading">
-          {{ loading ? 'Создаем аккаунт...' : 'Зарегистрироваться' }}
+          {{ loading ? t('Создаем аккаунт...') : t('Зарегистрироваться') }}
         </button>
 
-        <p class="aux">Уже есть аккаунт? <RouterLink to="/login">Войти</RouterLink></p>
+        <p class="aux">{{ t('Уже есть аккаунт?') }} <RouterLink to="/login">{{ t('Войти') }}</RouterLink></p>
 
         <p v-if="error" class="error">{{ error }}</p>
       </form>
