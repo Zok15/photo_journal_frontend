@@ -885,7 +885,7 @@ async function createSeries() {
 
   try {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(createFiles.value, {
-      maxBytes: 12 * 1024 * 1024,
+      maxBytes: 2 * 1024 * 1024,
       maxDimension: 3840,
       fallbackToOriginal: true,
     })
@@ -1411,7 +1411,7 @@ function toggleMobileFilters() {
                   @change="onCreateFilesChanged"
                 />
               </label>
-              <small class="hint">{{ t('Оптимизация перед отправкой: до 12MB на файл, оригиналы до 100MB поддерживаются.') }}</small>
+              <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB после оптимизации, оригиналы до 100MB поддерживаются.') }}</small>
               <small class="hint" v-if="createFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: createFiles.length }) }}</small>
 
               <p v-if="createError" class="error">{{ createError }}</p>

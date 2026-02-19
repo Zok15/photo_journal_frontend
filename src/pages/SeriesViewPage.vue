@@ -625,7 +625,7 @@ async function uploadPhotos() {
 
   try {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(uploadFiles.value, {
-      maxBytes: 12 * 1024 * 1024,
+      maxBytes: 2 * 1024 * 1024,
       maxDimension: 3840,
       fallbackToOriginal: true,
     })
@@ -1157,7 +1157,7 @@ watch(previewGridRef, () => {
               @change="onUploadFilesChanged"
             />
 
-            <small class="hint">{{ t('Оптимизация перед отправкой: до 12MB на файл, оригиналы до 100MB поддерживаются.') }}</small>
+            <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB после оптимизации, оригиналы до 100MB поддерживаются.') }}</small>
             <small class="hint" v-if="uploadFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: uploadFiles.length }) }}</small>
 
             <p v-if="uploadError" class="error">{{ uploadError }}</p>

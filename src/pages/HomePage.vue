@@ -496,7 +496,7 @@ watch(
 
         <ul class="hero-metrics">
           <li>
-            <strong>100 MB</strong>
+            <strong>2 MB</strong>
             <span>{{ t('Автооптимизация перед загрузкой') }}</span>
           </li>
           <li>
