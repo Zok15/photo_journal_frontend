@@ -27,6 +27,8 @@ let previewResizeObserver = null
 let searchDebounceTimer = null
 let loadSeriesRequestId = 0
 let refreshPreviewUrlsInFlight = false
+let previewRefreshRetries = 0
+const MAX_PREVIEW_REFRESH_RETRIES = 1
 let skipNextRouteReload = false
 const syncingQueryState = ref(false)
 
@@ -350,6 +352,15 @@ function formatDate(value) {
 
 function photoUrl(path) {
   return buildStorageUrl(path)
+}
+
+function publicPhotoUrl(photo) {
+  const direct = String(photo?.public_url || '').trim()
+  if (direct) {
+    return direct
+  }
+
+  return photoUrl(photo?.path)
 }
 
 function previewTiles(seriesId) {
@@ -809,7 +820,7 @@ async function loadSeriesPreviews(items) {
     const photos = (entry?.preview_photos || [])
       .map((photo) => {
         const signedSrc = typeof photo?.preview_url === 'string' ? photo.preview_url : ''
-        const directSrc = photoUrl(photo?.path)
+        const directSrc = publicPhotoUrl(photo)
         const bustedDirectSrc = withCacheBust(directSrc, previewUrlVersion.value)
         return {
           id: photo.id,
@@ -840,14 +851,23 @@ function onPreviewImageError(event, photo) {
     return
   }
 
-  if (!refreshPreviewUrlsInFlight) {
-    refreshPreviewUrlsInFlight = true
-    loadSeries(page.value)
-      .catch(() => {})
-      .finally(() => {
-        refreshPreviewUrlsInFlight = false
-      })
+  const currentSrc = String(target.currentSrc || target.src || '').trim()
+  const looksLikeSignedUrl = currentSrc.includes('expires=') && currentSrc.includes('signature=')
+  if (!looksLikeSignedUrl) {
+    return
   }
+
+  if (refreshPreviewUrlsInFlight || previewRefreshRetries >= MAX_PREVIEW_REFRESH_RETRIES) {
+    return
+  }
+
+  previewRefreshRetries += 1
+  refreshPreviewUrlsInFlight = true
+  loadSeries(page.value)
+    .catch(() => {})
+    .finally(() => {
+      refreshPreviewUrlsInFlight = false
+    })
 }
 
 async function createSeries() {
@@ -970,6 +990,7 @@ async function loadSeries(targetPage = 1) {
     lastPage.value = data.last_page || 1
     loadedPage.value = page.value
     await loadSeriesPreviews(series.value)
+    previewRefreshRetries = 0
   } catch (e) {
     if (requestId !== loadSeriesRequestId) {
       return

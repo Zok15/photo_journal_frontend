@@ -92,13 +92,22 @@ function photoUrl(path) {
   return buildStorageUrl(path)
 }
 
+function publicPhotoUrl(photo) {
+  const direct = String(photo?.public_url || '').trim()
+  if (direct) {
+    return direct
+  }
+
+  return photoUrl(photo?.path)
+}
+
 function resolvedPhotoUrl(photo) {
   const signed = String(photo?.preview_url || '').trim()
   if (signed) {
     return signed
   }
 
-  return withCacheBust(photoUrl(photo?.path), photoUrlVersion.value)
+  return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
 }
 
 function resolvedPhotoFallbackUrl(photo) {
@@ -106,7 +115,7 @@ function resolvedPhotoFallbackUrl(photo) {
     return ''
   }
 
-  return withCacheBust(photoUrl(photo?.path), photoUrlVersion.value)
+  return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
 }
 
 function formatDate(value) {
