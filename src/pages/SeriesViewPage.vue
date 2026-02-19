@@ -53,6 +53,10 @@ const showTagInput = ref(false)
 const tagSuggestions = ref([])
 const tagSuggestionsLoading = ref(false)
 const photoUrlVersion = ref(0)
+const previewGridWidth = ref(0)
+const previewAspectRatios = ref({})
+const previewGridRef = ref(null)
+let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
 
@@ -136,6 +140,168 @@ function resolvedPhotoFallbackUrl(photo) {
   }
 
   return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
+}
+
+async function ensurePreviewRatio(photo) {
+  const photoId = Number(photo?.id || 0)
+  const src = resolvedPhotoUrl(photo)
+  if (!photoId || !src || previewAspectRatios.value[photoId]) {
+    return
+  }
+
+  try {
+    const ratio = await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => {
+        if (!image.naturalWidth || !image.naturalHeight) {
+          resolve(1)
+          return
+        }
+
+        resolve(image.naturalWidth / image.naturalHeight)
+      }
+      image.onerror = reject
+      image.src = src
+    })
+
+    previewAspectRatios.value = {
+      ...previewAspectRatios.value,
+      [photoId]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
+    }
+  } catch (_) {
+    previewAspectRatios.value = {
+      ...previewAspectRatios.value,
+      [photoId]: 1,
+    }
+  }
+}
+
+function buildPreviewRows(photos, containerWidth) {
+  const previewGap = 10
+  const minPerRow = 2
+  const maxPerRow = 5
+  const targetRowHeight = 300
+  const minRowHeight = 210
+  const maxRowHeight = 420
+  const items = photos.map((photo) => ({
+    photo,
+    ratio: previewAspectRatios.value[photo.id] || 1,
+  }))
+
+  if (!items.length) {
+    return { rows: [] }
+  }
+
+  if (items.length === 1) {
+    const ratio = items[0].ratio || 1
+    const height = Math.max(150, Math.min(300, containerWidth / ratio))
+    return {
+      rows: [{ gap: 0, height, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
+    }
+  }
+
+  const minRows = Math.ceil(items.length / maxPerRow)
+  const maxRows = Math.floor(items.length / minPerRow)
+  let best = null
+
+  for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
+    const base = Math.floor(items.length / rowsCount)
+    const extra = items.length % rowsCount
+    const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
+
+    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
+      continue
+    }
+
+    const ratiosByRow = []
+    let cursor = 0
+    for (const count of counts) {
+      const chunk = items.slice(cursor, cursor + count)
+      cursor += count
+      ratiosByRow.push(chunk.reduce((sum, item) => sum + item.ratio, 0))
+    }
+
+    const rowHeights = ratiosByRow.map((ratioSum, index) => {
+      const rowWidth = containerWidth - previewGap * (counts[index] - 1)
+      return rowWidth / ratioSum
+    })
+
+    const rows = []
+    cursor = 0
+    let emptySpace = 0
+    let outOfRangePenalty = 0
+    let targetDeviation = 0
+
+    for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
+      const count = counts[rowIndex]
+      const chunk = items.slice(cursor, cursor + count)
+      cursor += count
+
+      const rowHeight = rowHeights[rowIndex]
+      const widths = chunk.map((item) => item.ratio * rowHeight)
+      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
+      const used = rowTotalWidth + previewGap * (count - 1)
+      emptySpace += Math.abs(containerWidth - used)
+      targetDeviation += Math.abs(targetRowHeight - rowHeight)
+      if (rowHeight < minRowHeight) {
+        outOfRangePenalty += Math.abs(minRowHeight - rowHeight) * 6
+      } else if (rowHeight > maxRowHeight) {
+        outOfRangePenalty += Math.abs(rowHeight - maxRowHeight) * 6
+      }
+
+      rows.push({
+        gap: previewGap,
+        height: rowHeight,
+        tiles: chunk.map((item) => ({
+          photo: item.photo,
+          width: item.ratio * rowHeight,
+        })),
+      })
+    }
+
+    const score = emptySpace + targetDeviation * 1.4 + outOfRangePenalty
+    if (!best || score < best.score) {
+      best = { score, rows }
+    }
+  }
+
+  if (!best) {
+    const height = 300
+    return {
+      rows: [{
+        gap: previewGap,
+        height,
+        tiles: items.map((item) => ({ photo: item.photo, width: item.ratio * height })),
+      }],
+    }
+  }
+
+  return { rows: best.rows }
+}
+
+const previewRows = computed(() => {
+  const photos = photoList.value
+  if (!photos.length) {
+    return []
+  }
+
+  const width = previewGridWidth.value || 1120
+  return buildPreviewRows(photos, width).rows
+})
+
+function syncPreviewGridObserver() {
+  if (!previewResizeObserver) {
+    return
+  }
+
+  previewResizeObserver.disconnect()
+
+  if (!previewGridRef.value) {
+    return
+  }
+
+  previewResizeObserver.observe(previewGridRef.value)
+  previewGridWidth.value = previewGridRef.value.clientWidth || 0
 }
 
 function formatDate(value) {
@@ -772,7 +938,6 @@ async function loadSeries(options = {}) {
         const response = await api.get(`/series/${route.params.id}`, {
           params: {
             include_photos: 1,
-            photos_limit: 50,
           },
         })
         data = response.data
@@ -787,7 +952,6 @@ async function loadSeries(options = {}) {
       const response = await api.get(`/public/series/${route.params.id}`, {
         params: {
           include_photos: 1,
-          photos_limit: 200,
         },
       })
       data = response.data
@@ -834,6 +998,16 @@ async function loadProfileMeta() {
 }
 
 onMounted(() => {
+  previewResizeObserver = new ResizeObserver((entries) => {
+    const [entry] = entries
+    const width = Number(entry?.contentRect?.width || 0)
+    if (width > 0) {
+      previewGridWidth.value = width
+    }
+  })
+
+  syncPreviewGridObserver()
+
   window.addEventListener('keydown', onKeydown)
   loadProfileMeta().finally(() => {
     loadSeries()
@@ -842,6 +1016,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  previewResizeObserver?.disconnect()
+  previewResizeObserver = null
   if (tagSuggestTimerId !== null) {
     clearTimeout(tagSuggestTimerId)
     tagSuggestTimerId = null
@@ -854,6 +1030,18 @@ watch(() => route.params.id, () => {
     loadSeries()
   })
 })
+
+watch(photoList, (photos) => {
+  previewAspectRatios.value = {}
+  photos.forEach((photo) => {
+    ensurePreviewRatio(photo)
+  })
+  syncPreviewGridObserver()
+}, { immediate: true })
+
+watch(previewGridRef, () => {
+  syncPreviewGridObserver()
+}, { immediate: true })
 </script>
 
 <template>
@@ -1007,40 +1195,54 @@ watch(() => route.params.id, () => {
 
         <p v-if="photoOrderError" class="error">{{ photoOrderError }}</p>
 
-        <section class="photo-grid" v-if="photoList.length">
-          <article
-            v-for="photo in photoList"
-            :key="photo.id"
-            class="photo-card"
-            :class="{
-              'photo-card--dragging': draggingPhotoId === photo.id,
-              'photo-card--drag-over': dragOverPhotoId === photo.id,
-            }"
-            :draggable="canEditSeries"
-            @dragstart="onPhotoDragStart(photo, $event)"
-            @dragenter.prevent="onPhotoDragEnter(photo)"
-            @dragover.prevent
-            @drop.prevent="onPhotoDrop(photo)"
-            @dragend="onPhotoDragEnd"
-            @click="openPreview(photo)"
+        <section v-if="photoList.length" ref="previewGridRef" class="preview-grid">
+          <div
+            v-for="(row, rowIndex) in previewRows"
+            :key="`row-${rowIndex}`"
+            class="preview-row"
+            :style="{ columnGap: `${row.gap}px` }"
           >
-            <LazyPhotoThumb
-              :src="resolvedPhotoUrl(photo)"
-              :fallback-src="resolvedPhotoFallbackUrl(photo)"
-              :alt="photo.original_name || 'photo'"
-            />
-            <div class="thumb-meta">
-              <strong>{{ photo.original_name }}</strong>
-              <div class="thumb-bottom">
-                <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
-                <div class="thumb-actions">
-                  <button type="button" class="icon-ghost-btn" title="Скачать оригинал" @click.stop="downloadPhotoOriginal(photo)">⤓</button>
-                  <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(photo)">✎</button>
-                  <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(photo)">🗑</button>
+            <article
+              v-for="tile in row.tiles"
+              :key="tile.photo.id"
+              class="preview-card"
+              :class="{
+                'preview-card--dragging': draggingPhotoId === tile.photo.id,
+                'preview-card--drag-over': dragOverPhotoId === tile.photo.id,
+              }"
+              :style="{ width: `${tile.width}px` }"
+              :draggable="canEditSeries"
+              @dragstart="onPhotoDragStart(tile.photo, $event)"
+              @dragenter.prevent="onPhotoDragEnter(tile.photo)"
+              @dragover.prevent
+              @drop.prevent="onPhotoDrop(tile.photo)"
+              @dragend="onPhotoDragEnd"
+            >
+              <div
+                class="preview-card-image-wrap"
+                :style="{ height: `${row.height}px` }"
+                @click="openPreview(tile.photo)"
+              >
+                <LazyPhotoThumb
+                  class="preview-card-image"
+                  :src="resolvedPhotoUrl(tile.photo)"
+                  :fallback-src="resolvedPhotoFallbackUrl(tile.photo)"
+                  :alt="tile.photo.original_name || 'photo'"
+                />
+              </div>
+              <div class="preview-card-meta">
+                <strong>{{ tile.photo.original_name }}</strong>
+                <div class="thumb-bottom">
+                  <span>{{ tile.photo.mime }} · {{ formatSize(tile.photo.size) }}</span>
+                  <div class="thumb-actions">
+                    <button type="button" class="icon-ghost-btn" title="Скачать оригинал" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(tile.photo)">✎</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(tile.photo)">🗑</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </article>
+            </article>
+          </div>
         </section>
 
         <p v-else class="state-text">В этой серии пока нет фото.</p>
@@ -1384,45 +1586,69 @@ watch(() => route.params.id, () => {
   gap: 8px;
 }
 
-.photo-grid {
-  column-count: 2;
-  column-gap: 10px;
+.preview-grid {
+  width: 100%;
+  display: grid;
+  row-gap: 10px;
 }
 
-.photo-card {
-  display: inline-block;
+.preview-row {
   width: 100%;
-  margin: 0 0 10px;
-  break-inside: avoid;
+  display: flex;
+  align-items: flex-start;
+}
+
+.preview-card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
   background: #fcfdfb;
-  cursor: grab;
   user-select: none;
 }
 
-.photo-card:active {
+.preview-card[draggable='true'] {
+  cursor: grab;
+}
+
+.preview-card[draggable='true']:active {
   cursor: grabbing;
 }
 
-.photo-card--dragging {
+.preview-card--dragging {
   opacity: 0.55;
 }
 
-.photo-card--drag-over {
+.preview-card--drag-over {
   border-color: #87ad98;
   box-shadow: inset 0 0 0 2px rgba(79, 131, 102, 0.18);
 }
 
-.thumb-meta {
+.preview-card-image-wrap {
+  width: 100%;
+  background: #f3f6f1;
+  cursor: zoom-in;
+}
+
+.preview-card-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.preview-card-meta {
   display: grid;
   gap: 3px;
   padding: 8px;
   font-size: 13px;
+  border-top: 1px solid #e4e9e2;
+  background: #fcfdfb;
 }
 
-.thumb-meta span {
+.preview-card-meta span {
   color: var(--muted);
 }
 
@@ -1528,18 +1754,6 @@ watch(() => route.params.id, () => {
   color: #87520b;
 }
 
-@media (min-width: 1200px) {
-  .photo-grid {
-    column-count: 3;
-  }
-}
-
-@media (min-width: 1550px) {
-  .photo-grid {
-    column-count: 4;
-  }
-}
-
 @media (max-width: 680px) {
   .series-page {
     padding: 10px 0 20px;
@@ -1563,8 +1777,8 @@ watch(() => route.params.id, () => {
     font-size: 17px;
   }
 
-  .photo-grid {
-    column-count: 1;
+  .preview-grid {
+    row-gap: 8px;
   }
 }
 </style>
