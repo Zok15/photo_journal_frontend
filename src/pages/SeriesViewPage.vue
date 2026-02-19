@@ -57,6 +57,17 @@ let tagSuggestRequestId = 0
 const selectedPhoto = ref(null)
 
 const photoList = computed(() => item.value?.photos || [])
+const selectedPhotoIndex = computed(() => {
+  if (!selectedPhoto.value) {
+    return -1
+  }
+
+  return photoList.value.findIndex((photo) => Number(photo?.id) === Number(selectedPhoto.value?.id))
+})
+const canPreviewPrev = computed(() => selectedPhotoIndex.value > 0)
+const canPreviewNext = computed(() => {
+  return selectedPhotoIndex.value >= 0 && selectedPhotoIndex.value < photoList.value.length - 1
+})
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
     .map((tag) => ({
@@ -227,6 +238,22 @@ function closePreview() {
   selectedPhoto.value = null
 }
 
+function openPrevPhoto() {
+  if (!canPreviewPrev.value) {
+    return
+  }
+
+  selectedPhoto.value = photoList.value[selectedPhotoIndex.value - 1] || null
+}
+
+function openNextPhoto() {
+  if (!canPreviewNext.value) {
+    return
+  }
+
+  selectedPhoto.value = photoList.value[selectedPhotoIndex.value + 1] || null
+}
+
 function onKeydown(event) {
   if (event.key === 'Escape' && showDeletePhotoModal.value) {
     closeDeletePhotoModal()
@@ -240,6 +267,18 @@ function onKeydown(event) {
 
   if (event.key === 'Escape' && selectedPhoto.value) {
     closePreview()
+    return
+  }
+
+  if (event.key === 'ArrowLeft' && selectedPhoto.value) {
+    event.preventDefault()
+    openPrevPhoto()
+    return
+  }
+
+  if (event.key === 'ArrowRight' && selectedPhoto.value) {
+    event.preventDefault()
+    openNextPhoto()
   }
 }
 
@@ -918,7 +957,11 @@ watch(() => route.params.id, () => {
       :open="Boolean(selectedPhoto)"
       :photo="selectedPhoto"
       :src="resolvedPhotoUrl(selectedPhoto)"
+      :can-prev="canPreviewPrev"
+      :can-next="canPreviewNext"
       @close="closePreview"
+      @prev="openPrevPhoto"
+      @next="openNextPhoto"
     />
 
     <div v-if="showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
