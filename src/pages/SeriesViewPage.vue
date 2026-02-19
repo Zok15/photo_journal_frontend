@@ -1323,11 +1323,11 @@ watch(previewGridRef, () => {
   border-radius: 16px;
   background: var(--panel);
   box-shadow: 0 18px 36px rgba(79, 86, 80, 0.1);
-  padding: 18px;
+  padding: 24px;
 }
 
 .back-link {
-  margin: 0 0 10px;
+  margin: 0 0 18px;
 }
 
 .back-link a {
@@ -1343,7 +1343,7 @@ watch(previewGridRef, () => {
 .series-header h1 {
   margin: 0;
   font-size: 48px;
-  line-height: 1;
+  line-height: 1.04;
   letter-spacing: -0.03em;
 }
 
@@ -1351,7 +1351,8 @@ watch(previewGridRef, () => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
 .series-actions {
@@ -1361,7 +1362,7 @@ watch(previewGridRef, () => {
 }
 
 .series-meta {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1391,16 +1392,17 @@ watch(previewGridRef, () => {
 }
 
 .series-description {
-  margin: 12px 0 16px;
+  margin: 16px 0 18px;
   font-size: 19px;
+  line-height: 1.42;
   color: #4b574f;
 }
 
 .series-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: -6px 0 14px;
+  gap: 8px;
+  margin: 0 0 20px;
 }
 
 .series-tag {
@@ -1589,7 +1591,8 @@ watch(previewGridRef, () => {
 .preview-grid {
   width: 100%;
   display: grid;
-  row-gap: 10px;
+  row-gap: 12px;
+  margin-top: 8px;
 }
 
 .preview-row {
@@ -1641,8 +1644,8 @@ watch(previewGridRef, () => {
 
 .preview-card-meta {
   display: grid;
-  gap: 3px;
-  padding: 8px;
+  gap: 5px;
+  padding: 10px;
   font-size: 13px;
   border-top: 1px solid #e4e9e2;
   background: #fcfdfb;
@@ -1657,6 +1660,7 @@ watch(previewGridRef, () => {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  margin-top: 2px;
 }
 
 .thumb-actions {
@@ -1761,7 +1765,7 @@ watch(previewGridRef, () => {
 
   .series-shell {
     border-radius: 0;
-    padding: 14px;
+    padding: 16px 14px;
   }
 
   .series-header h1 {
@@ -1778,7 +1782,8 @@ watch(previewGridRef, () => {
   }
 
   .preview-grid {
-    row-gap: 8px;
+    row-gap: 10px;
+    margin-top: 6px;
   }
 }
 </style>
