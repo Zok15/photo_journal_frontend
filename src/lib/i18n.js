@@ -196,3 +196,10 @@ export function t(source, params = {}) {
 
 export const currentLocale = computed(() => locale.value)
 export const availableLocales = SUPPORTED_LOCALES
+
+export function localeLabel(code) {
+  const normalized = normalizeLocale(code)
+  if (normalized === 'ru') return 'RU'
+  if (normalized === 'en') return 'EN'
+  return normalized.toUpperCase()
+}
