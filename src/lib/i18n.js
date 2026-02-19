@@ -5,6 +5,7 @@ const SUPPORTED_LOCALES = ['ru', 'en']
 
 const en = {
   'Публичные': 'Public',
+  'Галерея': 'Gallery',
   'Серии': 'Series',
   'Профиль': 'Profile',
   'Вход': 'Login',
@@ -40,6 +41,7 @@ const en = {
   'Русский': 'Russian',
   'Английский': 'English',
   'Публичные серии': 'Public series',
+  'Серии в галерее не найдены.': 'No series found in gallery.',
   'Поиск': 'Search',
   'Название или описание': 'Title or description',
   'Найти': 'Search',
@@ -169,6 +171,8 @@ const en = {
   'Удобный фотоархив серий для веба': 'A convenient web-ready photo series archive',
   'PhotoLog помогает хранить серии фотографий в аккуратной структуре и быстро находить нужное по названию, описанию, тегам, дате и автору.': 'PhotoLog helps you keep photo series in a clean structure and quickly find what you need by title, description, tags, date, and author.',
   'Открыть публичные серии': 'Open public series',
+  'Открыть галерею': 'Open gallery',
+  'Смотреть все': 'See all',
   'Перейти в мой журнал': 'Go to my journal',
   'Войти в журнал': 'Sign in to journal',
   'Автооптимизация перед загрузкой': 'Auto optimization before upload',

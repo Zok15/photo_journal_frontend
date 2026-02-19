@@ -16,6 +16,9 @@ const HERO_MAX_POOL = 36
 const HERO_ROW_GAP = 8
 const HERO_INNER_VERTICAL_PADDING = 10
 const HERO_STACK_BREAKPOINT = 1100
+const SHOWCASE_SMALL_BREAKPOINT = 1100
+const SHOWCASE_LARGE_MAX = 6
+const SHOWCASE_SMALL_MAX = 4
 const heroGridWidth = ref(0)
 const heroTextHeight = ref(0)
 const heroTextRef = ref(null)
@@ -123,7 +126,12 @@ const topTagLinks = computed(() => {
     }))
 })
 
-const showcaseSeries = computed(() => featuredSeries.value.slice(0, 6))
+const showcaseSeries = computed(() => {
+  const limit = viewportWidth.value <= SHOWCASE_SMALL_BREAKPOINT
+    ? SHOWCASE_SMALL_MAX
+    : SHOWCASE_LARGE_MAX
+  return featuredSeries.value.slice(0, limit)
+})
 const isHeroStacked = computed(() => viewportWidth.value <= HERO_STACK_BREAKPOINT)
 
 const heroPhotos = computed(() => {
@@ -482,7 +490,7 @@ watch(
         </p>
 
         <div class="hero-actions">
-          <RouterLink to="/public/series" class="primary-btn">{{ t('Открыть публичные серии') }}</RouterLink>
+          <RouterLink to="/public/series" class="primary-btn">{{ t('Открыть галерею') }}</RouterLink>
           <RouterLink :to="signedIn ? '/series' : '/login'" class="ghost-btn">{{ signedIn ? t('Перейти в мой журнал') : t('Войти в журнал') }}</RouterLink>
         </div>
 
@@ -567,8 +575,8 @@ watch(
 
     <section class="showcase reveal reveal--five">
       <div class="showcase-head">
-        <h2>{{ t('Публичные серии') }}</h2>
-        <RouterLink to="/public/series" class="showcase-all">{{ t('Перейти в каталог') }}</RouterLink>
+        <h2>{{ t('Галерея') }}</h2>
+        <RouterLink to="/public/series" class="showcase-all">{{ t('Смотреть все') }}</RouterLink>
       </div>
 
       <p v-if="featuredLoading" class="state-text">{{ t('Загрузка...') }}</p>

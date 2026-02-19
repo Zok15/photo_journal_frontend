@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <RouterLink to="/public/series" class="public-link">{{ t('Публичные') }}</RouterLink>
+        <RouterLink to="/public/series" class="public-link">{{ t('Галерея') }}</RouterLink>
         <RouterLink v-if="!signedIn" to="/login" class="nav-link">{{ t('Вход') }}</RouterLink>
         <RouterLink v-if="!signedIn" to="/register" class="nav-link">{{ t('Регистрация') }}</RouterLink>
 

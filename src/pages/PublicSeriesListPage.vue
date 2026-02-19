@@ -572,7 +572,7 @@ watch(
   <div class="public-page">
     <div class="public-shell">
       <header class="public-header">
-        <h1>{{ t('Публичные серии') }}</h1>
+        <h1>{{ t('Галерея') }}</h1>
       </header>
 
       <div class="public-layout">
@@ -677,7 +677,7 @@ watch(
         <main class="content-panel">
           <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
           <p v-else-if="error" class="error">{{ error }}</p>
-          <p v-else-if="!series.length" class="state-text">{{ t('Публичные серии не найдены.') }}</p>
+          <p v-else-if="!series.length" class="state-text">{{ t('Серии в галерее не найдены.') }}</p>
 
           <section v-else class="series-grid">
             <article v-for="item in series" :key="item.id" class="series-card">
