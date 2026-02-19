@@ -485,6 +485,36 @@ function goToPage(nextPage) {
   loadPublicSeries(nextPage)
 }
 
+function normalizeSort(value) {
+  return value === 'old' ? 'old' : 'new'
+}
+
+function parseTagQuery(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => String(entry || '').split(','))
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
+  return String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function applyFiltersFromQuery(query = {}) {
+  search.value = String(query.search || '').trim()
+  searchInput.value = search.value
+  activeSort.value = normalizeSort(String(query.sort || '').trim())
+  selectedTags.value = parseTagQuery(query.tag)
+  dateFrom.value = String(query.date_from || '').trim()
+  dateTo.value = String(query.date_to || '').trim()
+  selectedAuthorId.value = String(query.author_id || '').trim()
+  authorSearchInput.value = ''
+  showAuthorSuggestions.value = false
+}
+
 onMounted(() => {
   previewResizeObserver = new ResizeObserver((entries) => {
     entries.forEach((entry) => {
@@ -529,22 +559,13 @@ watch(
 )
 
 watch(
-  () => route.query.author_id,
-  (authorIdFromQuery) => {
-    const normalized = String(authorIdFromQuery || '').trim()
-    if (normalized === String(selectedAuthorId.value || '')) {
-      return
-    }
-
-    selectedAuthorId.value = normalized
-    authorSearchInput.value = ''
+  () => route.fullPath,
+  () => {
+    applyFiltersFromQuery(route.query)
     loadPublicSeries(1)
   },
+  { immediate: true },
 )
-
-selectedAuthorId.value = String(route.query.author_id || '').trim()
-
-loadPublicSeries()
 </script>
 
 <template>

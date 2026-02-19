@@ -4,6 +4,7 @@ import RegisterPage from '../pages/RegisterPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
+import HomePage from '../pages/HomePage.vue'
 import PublicSeriesListPage from '../pages/PublicSeriesListPage.vue'
 import { getToken } from '../lib/session'
 
@@ -22,9 +23,13 @@ const routes = [
   },
   {
     path: '/',
+    name: 'home',
+    component: HomePage,
+  },
+  {
+    path: '/public/series',
     name: 'series.public',
     component: PublicSeriesListPage,
-    alias: ['/public/series'],
   },
   {
     path: '/series',
