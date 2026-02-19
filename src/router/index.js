@@ -13,40 +13,89 @@ const routes = [
     path: '/login',
     name: 'login',
     component: LoginPage,
-    meta: { guestOnly: true },
+    meta: {
+      guestOnly: true,
+      seo: {
+        title: 'Вход',
+        description: 'Авторизация для работы с вашими сериями и фотографиями.',
+        index: false,
+      },
+    },
   },
   {
     path: '/register',
     name: 'register',
     component: RegisterPage,
-    meta: { guestOnly: true },
+    meta: {
+      guestOnly: true,
+      seo: {
+        title: 'Регистрация',
+        description: 'Создайте аккаунт для работы с вашими сериями и фотографиями.',
+        index: false,
+      },
+    },
   },
   {
     path: '/',
     name: 'home',
     component: HomePage,
+    meta: {
+      seo: {
+        title: 'Удобный фотоархив серий для веба',
+        description: 'PhotoLog помогает хранить серии фотографий в аккуратной структуре и быстро находить нужное по названию, описанию, тегам, дате и автору.',
+        index: true,
+      },
+    },
   },
   {
     path: '/public/series',
     name: 'series.public',
     component: PublicSeriesListPage,
+    meta: {
+      seo: {
+        title: 'Галерея',
+        description: 'Публичная галерея фотосерий PhotoLog с фильтрами по тегам, дате, автору и тексту.',
+        index: true,
+      },
+    },
   },
   {
     path: '/series',
     name: 'series.list',
     component: SeriesListPage,
-    meta: { requiresAuth: true },
+    meta: {
+      requiresAuth: true,
+      seo: {
+        title: 'Серии',
+        description: 'Личный список серий фотографий.',
+        index: false,
+      },
+    },
   },
   {
     path: '/series/:id',
     name: 'series.view',
     component: SeriesViewPage,
+    meta: {
+      seo: {
+        title: 'Серия',
+        description: 'Просмотр серии фотографий в PhotoLog.',
+        index: true,
+      },
+    },
   },
   {
     path: '/profile',
     name: 'profile',
     component: ProfilePage,
-    meta: { requiresAuth: true },
+    meta: {
+      requiresAuth: true,
+      seo: {
+        title: 'Профиль',
+        description: 'Настройки профиля PhotoLog.',
+        index: false,
+      },
+    },
   },
 ]
 

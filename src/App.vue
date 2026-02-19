@@ -1,10 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from './lib/api'
 import { logout as performLogout } from './lib/logout'
 import { getUser, isAuthenticated, setCurrentUser } from './lib/session'
 import { availableLocales, currentLocale, localeLabel, setLocale, t } from './lib/i18n'
+import { applySeoForRoute } from './lib/seo'
 
+const route = useRoute()
 const signedIn = computed(() => isAuthenticated.value)
 const currentUser = computed(() => getUser())
 const journalMenuLabel = computed(() => {
@@ -88,6 +91,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onPointerDown)
   window.removeEventListener('keydown', onKeyDown)
 })
+
+watch(
+  [() => route.fullPath, () => currentLocale.value],
+  () => {
+    applySeoForRoute(route, { locale: currentLocale.value, t })
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
