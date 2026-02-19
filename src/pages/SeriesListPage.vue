@@ -7,7 +7,7 @@ import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
-import { findInvalidUploadFile } from '../lib/uploadPolicy'
+import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { currentLocale, t } from '../lib/i18n'
 
 const series = ref([])
@@ -312,10 +312,10 @@ function syncStateToQuery() {
 
 function onCreateFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = findInvalidUploadFile(files)
+  const invalid = findInvalidUploadIssue(files)
 
   if (invalid) {
-    createError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
+    createError.value = buildUploadValidationMessage(invalid)
     createFiles.value = []
     event.target.value = ''
     return
@@ -885,8 +885,9 @@ async function createSeries() {
 
   try {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(createFiles.value, {
-      maxBytes: 2 * 1024 * 1024,
-      maxDimension: 2560,
+      maxBytes: 12 * 1024 * 1024,
+      maxDimension: 3840,
+      fallbackToOriginal: true,
     })
 
     createWarnings.value = warnings
@@ -1410,7 +1411,7 @@ function toggleMobileFilters() {
                   @change="onCreateFilesChanged"
                 />
               </label>
-              <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB на файл.') }}</small>
+              <small class="hint">{{ t('Оптимизация перед отправкой: до 12MB на файл, оригиналы до 100MB поддерживаются.') }}</small>
               <small class="hint" v-if="createFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: createFiles.length }) }}</small>
 
               <p v-if="createError" class="error">{{ createError }}</p>

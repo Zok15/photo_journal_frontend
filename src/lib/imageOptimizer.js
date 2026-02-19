@@ -62,6 +62,7 @@ export async function optimizeImagesForUpload(files, options = {}) {
   const maxBytes = options.maxBytes ?? 2 * 1024 * 1024
   const maxDimension = options.maxDimension ?? 2560
   const minDimension = options.minDimension ?? 900
+  const fallbackToOriginal = options.fallbackToOriginal ?? true
   const warnings = []
   const optimized = []
 
@@ -106,9 +107,18 @@ export async function optimizeImagesForUpload(files, options = {}) {
       }
 
       if (blob.size > maxBytes) {
+        if (fallbackToOriginal) {
+          warnings.push({
+            original_name: file.name,
+            message: 'Optimization limit reached. Original file kept.',
+          })
+          optimized.push(file)
+          continue
+        }
+
         warnings.push({
           original_name: file.name,
-          message: 'Could not optimize below 2MB. File skipped.',
+          message: 'Could not optimize enough. File skipped.',
         })
         continue
       }
@@ -120,10 +130,18 @@ export async function optimizeImagesForUpload(files, options = {}) {
 
       optimized.push(nextFile)
     } catch (_) {
-      warnings.push({
-        original_name: file.name,
-        message: 'Image optimization failed. File skipped.',
-      })
+      if (fallbackToOriginal) {
+        warnings.push({
+          original_name: file.name,
+          message: 'Image optimization failed. Original file kept.',
+        })
+        optimized.push(file)
+      } else {
+        warnings.push({
+          original_name: file.name,
+          message: 'Image optimization failed. File skipped.',
+        })
+      }
     }
   }
 

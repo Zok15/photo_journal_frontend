@@ -92,7 +92,7 @@ const en = {
   'Редактировать': 'Edit',
   'Удалить серию': 'Delete series',
   'Поиск...': 'Searching...',
-  'Оптимизация перед отправкой: до 2MB на файл.': 'Upload optimization: up to 2MB per file.',
+  'Оптимизация перед отправкой: до 12MB на файл, оригиналы до 100MB поддерживаются.': 'Upload optimization: up to 12MB per file, originals up to 100MB are supported.',
   'Выбрано: {count} файл(ов)': 'Selected: {count} file(s)',
   'Загрузить фото': 'Upload photos',
   'Редактировать серию': 'Edit series',

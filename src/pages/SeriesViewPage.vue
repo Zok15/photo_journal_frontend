@@ -7,7 +7,7 @@ import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
-import { findInvalidUploadFile } from '../lib/uploadPolicy'
+import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
 import { currentLocale, t } from '../lib/i18n'
 
@@ -351,10 +351,10 @@ function formatSize(bytes) {
 
 function onUploadFilesChanged(event) {
   const files = Array.from(event.target.files || [])
-  const invalid = findInvalidUploadFile(files)
+  const invalid = findInvalidUploadIssue(files)
 
   if (invalid) {
-    uploadError.value = `File "${invalid.name}" is invalid. Use JPG/PNG/WEBP up to 25MB.`
+    uploadError.value = buildUploadValidationMessage(invalid)
     uploadFiles.value = []
     event.target.value = ''
     return
@@ -625,8 +625,9 @@ async function uploadPhotos() {
 
   try {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(uploadFiles.value, {
-      maxBytes: 2 * 1024 * 1024,
-      maxDimension: 2560,
+      maxBytes: 12 * 1024 * 1024,
+      maxDimension: 3840,
+      fallbackToOriginal: true,
     })
 
     uploadWarnings.value = warnings
@@ -1156,7 +1157,7 @@ watch(previewGridRef, () => {
               @change="onUploadFilesChanged"
             />
 
-            <small class="hint">{{ t('Оптимизация перед отправкой: до 2MB на файл.') }}</small>
+            <small class="hint">{{ t('Оптимизация перед отправкой: до 12MB на файл, оригиналы до 100MB поддерживаются.') }}</small>
             <small class="hint" v-if="uploadFiles.length">{{ t('Выбрано: {count} файл(ов)', { count: uploadFiles.length }) }}</small>
 
             <p v-if="uploadError" class="error">{{ uploadError }}</p>
