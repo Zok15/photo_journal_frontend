@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
@@ -30,7 +30,14 @@ const availableAuthors = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewGridElements = new Map()
+const TAG_ROWS_INITIAL = 4
+const TAG_ROWS_STEP = 10
+const visibleTagRows = ref(TAG_ROWS_INITIAL)
+const tagRowsTotal = ref(0)
+const tagVisibleHeight = ref(0)
+const tagsCloudRef = ref(null)
 let previewResizeObserver = null
+let tagsLayoutObserver = null
 let authorSuggestBlurTimerId = null
 
 const hasActiveFilters = computed(() => {
@@ -63,6 +70,24 @@ const authorSuggestions = computed(() => {
   }
 
   return filteredAuthors.value.slice(0, 8)
+})
+
+const hasHiddenTagRows = computed(() => {
+  return tagRowsTotal.value > visibleTagRows.value
+})
+
+const canCollapseTagRows = computed(() => {
+  return visibleTagRows.value > TAG_ROWS_INITIAL
+})
+
+const tagCloudStyle = computed(() => {
+  if (!hasHiddenTagRows.value || tagVisibleHeight.value <= 0) {
+    return {}
+  }
+
+  return {
+    maxHeight: `${tagVisibleHeight.value}px`,
+  }
 })
 
 function formatDate(value) {
@@ -485,6 +510,60 @@ function goToPage(nextPage) {
   loadPublicSeries(nextPage)
 }
 
+function recalcTagRowsLayout() {
+  const container = tagsCloudRef.value
+  if (!container) {
+    tagRowsTotal.value = 0
+    tagVisibleHeight.value = 0
+    return
+  }
+
+  const chips = Array.from(container.querySelectorAll('.tag-chip'))
+  if (!chips.length) {
+    tagRowsTotal.value = 0
+    tagVisibleHeight.value = 0
+    return
+  }
+
+  const rowsByTop = new Map()
+  for (const chip of chips) {
+    const top = chip.offsetTop
+    const bottom = chip.offsetTop + chip.offsetHeight
+    const current = rowsByTop.get(top) || { top, bottom }
+    current.bottom = Math.max(current.bottom, bottom)
+    rowsByTop.set(top, current)
+  }
+
+  const rows = Array.from(rowsByTop.values()).sort((a, b) => a.top - b.top)
+  tagRowsTotal.value = rows.length
+
+  if (rows.length <= visibleTagRows.value) {
+    tagVisibleHeight.value = rows.at(-1)?.bottom || 0
+    return
+  }
+
+  const fullRowsIndex = Math.min(rows.length, visibleTagRows.value) - 1
+  const nextRowIndex = Math.min(rows.length - 1, visibleTagRows.value)
+  const fullBottom = rows[fullRowsIndex]?.bottom || 0
+  const nextRow = rows[nextRowIndex] || null
+
+  if (!nextRow) {
+    tagVisibleHeight.value = fullBottom
+    return
+  }
+
+  const nextRowHeight = nextRow.bottom - nextRow.top
+  tagVisibleHeight.value = Math.round(fullBottom + nextRowHeight * 0.45)
+}
+
+function expandTagRows() {
+  visibleTagRows.value += TAG_ROWS_STEP
+}
+
+function collapseTagRows() {
+  visibleTagRows.value = TAG_ROWS_INITIAL
+}
+
 function normalizeSort(value) {
   return value === 'old' ? 'old' : 'new'
 }
@@ -530,12 +609,24 @@ onMounted(() => {
       }
     })
   })
+
+  tagsLayoutObserver = new ResizeObserver(() => {
+    recalcTagRowsLayout()
+  })
+  if (tagsCloudRef.value) {
+    tagsLayoutObserver.observe(tagsCloudRef.value)
+  }
 })
 
 onBeforeUnmount(() => {
   if (previewResizeObserver) {
     previewResizeObserver.disconnect()
     previewResizeObserver = null
+  }
+
+  if (tagsLayoutObserver) {
+    tagsLayoutObserver.disconnect()
+    tagsLayoutObserver = null
   }
 
   if (authorSuggestBlurTimerId !== null) {
@@ -566,6 +657,11 @@ watch(
   },
   { immediate: true },
 )
+
+watch([availableTags, visibleTagRows], async () => {
+  await nextTick()
+  recalcTagRowsLayout()
+}, { immediate: true })
 </script>
 
 <template>
@@ -630,22 +726,6 @@ watch(
           </section>
 
           <section class="filter-group">
-            <h3>{{ t('Теги') }}</h3>
-            <div class="chip-row">
-              <button
-                v-for="tag in availableTags"
-                :key="tag"
-                type="button"
-                class="chip"
-                :class="{ active: selectedTags.includes(tag) }"
-                @click="toggleTag(tag)"
-              >
-                #{{ tag }}
-              </button>
-            </div>
-          </section>
-
-          <section class="filter-group">
             <h3>{{ t('Дата') }}</h3>
             <label class="date-label">
               {{ t('От') }}
@@ -655,6 +735,46 @@ watch(
               {{ t('До') }}
               <input v-model="dateTo" type="date" @change="loadPublicSeries(1)" />
             </label>
+          </section>
+
+          <section class="filter-group">
+            <h3>{{ t('Теги') }}</h3>
+            <div class="tags-cloud-shell">
+              <div
+                ref="tagsCloudRef"
+                class="chip-row tags-cloud"
+                :class="{ 'tags-cloud--collapsed': hasHiddenTagRows }"
+                :style="tagCloudStyle"
+              >
+                <button
+                  v-for="tag in availableTags"
+                  :key="tag"
+                  type="button"
+                  class="chip tag-chip"
+                  :class="{ active: selectedTags.includes(tag) }"
+                  @click="toggleTag(tag)"
+                >
+                  #{{ tag }}
+                </button>
+              </div>
+
+              <div v-if="hasHiddenTagRows" class="tags-fade-overlay"></div>
+              <button
+                v-if="hasHiddenTagRows"
+                type="button"
+                class="tags-expand-btn"
+                :title="t('Показать ещё')"
+                @click="expandTagRows"
+              >
+                <span class="tags-chevron tags-chevron--down" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            <div v-if="canCollapseTagRows" class="chip-row tags-collapse-row">
+              <button type="button" class="tags-expand-btn tags-collapse-btn" :title="t('Свернуть')" @click="collapseTagRows">
+                <span class="tags-chevron tags-chevron--up" aria-hidden="true"></span>
+              </button>
+            </div>
           </section>
 
           <section class="filter-group">
@@ -892,6 +1012,90 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.tags-cloud-shell {
+  position: relative;
+  padding-bottom: 34px;
+}
+
+.tags-cloud {
+  transition: max-height 0.24s ease;
+}
+
+.tags-cloud--collapsed {
+  overflow: hidden;
+}
+
+.tags-fade-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 34px;
+  height: 96px;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(247, 248, 244, 0.04) 0%,
+      rgba(247, 248, 244, 0.72) 54%,
+      rgba(247, 248, 244, 0.98) 100%
+    );
+}
+
+.tags-expand-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(154, 198, 176, 0.25);
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tags-expand-btn:hover {
+  background: rgba(154, 198, 176, 0.38);
+}
+
+.tags-chevron {
+  width: 12px;
+  height: 12px;
+  border-right: 3px solid rgba(238, 244, 239, 0.95);
+  border-bottom: 3px solid rgba(238, 244, 239, 0.95);
+  border-radius: 2px;
+  display: block;
+}
+
+.tags-chevron--down {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.tags-chevron--up {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}
+
+.tags-collapse-row {
+  margin-top: 6px;
+  justify-content: center;
+}
+
+.tags-collapse-btn {
+  position: static;
+  transform: none;
+  width: 34px;
+  height: 24px;
+  background: #e3ebe4;
+}
+
+.tags-collapse-btn:hover {
+  background: #d5e5da;
 }
 
 .chip,
