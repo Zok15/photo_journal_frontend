@@ -6,7 +6,7 @@ import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
-import { seriesPath } from '../lib/seriesPath'
+import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
@@ -112,6 +112,15 @@ function mergeSeriesPayload(next) {
     ...next,
     photos: Array.isArray(next.photos) ? next.photos : (item.value.photos || []),
   }
+}
+
+function currentSeriesKey() {
+  const keyFromItem = seriesSlugOrId(item.value)
+  if (keyFromItem) {
+    return keyFromItem
+  }
+
+  return String(route.params.slug || '').trim()
 }
 
 function goBack() {
@@ -386,6 +395,8 @@ function cancelEditSeries() {
 
 async function saveSeries() {
   if (!item.value || !canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
   if (!editTitle.value.trim()) {
     editError.value = t('Название обязательно.')
     return
@@ -395,7 +406,7 @@ async function saveSeries() {
   editError.value = ''
 
   try {
-    const { data } = await api.patch(`/series/${item.value.id}`, {
+    const { data } = await api.patch(`/series/${seriesKey}`, {
       title: editTitle.value,
       description: editDescription.value || null,
       is_public: editIsPublic.value,
@@ -540,9 +551,15 @@ async function onPhotoDrop(targetPhoto) {
 
   reorderingPhotos.value = true
   photoOrderError.value = ''
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) {
+    reorderingPhotos.value = false
+    onPhotoDragEnd()
+    return
+  }
 
   try {
-    await api.patch(`/series/${item.value.id}/photos/reorder`, {
+    await api.patch(`/series/${seriesKey}/photos/reorder`, {
       photo_ids: nextOrder.map((photo) => photo.id),
     })
   } catch (e) {
@@ -594,12 +611,14 @@ function closeDeletePhotoModal(force = false) {
 
 async function deleteSeries() {
   if (!item.value || !canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   deletingSeries.value = true
   deleteSeriesError.value = ''
 
   try {
-    await api.delete(`/series/${item.value.id}`)
+    await api.delete(`/series/${seriesKey}`)
     showDeleteSeriesModal.value = false
     await router.push('/series')
   } catch (e) {
@@ -613,6 +632,8 @@ async function uploadPhotos() {
   if (!canEditSeries.value) {
     return
   }
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   uploadError.value = ''
   uploadWarnings.value = []
@@ -644,7 +665,7 @@ async function uploadPhotos() {
       formData.append('photos[]', file)
     }
 
-    const { data } = await api.post(`/series/${route.params.slug}/photos`, formData)
+    const { data } = await api.post(`/series/${seriesKey}/photos`, formData)
 
     uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
     uploadFiles.value = []
@@ -669,6 +690,8 @@ async function deletePhoto(photo) {
 
 async function confirmDeletePhoto() {
   if (!item.value || !photoToDelete.value || !canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   const deletedPhotoId = Number(photoToDelete.value.id)
   let deleted = false
@@ -676,7 +699,7 @@ async function confirmDeletePhoto() {
   deletePhotoError.value = ''
 
   try {
-    await api.delete(`/series/${item.value.id}/photos/${deletedPhotoId}`)
+    await api.delete(`/series/${seriesKey}/photos/${deletedPhotoId}`)
     deleted = true
   } catch (e) {
     deletePhotoError.value = e?.response?.data?.message || t('Не удалось удалить фото.')
@@ -715,6 +738,8 @@ async function confirmDeletePhoto() {
 
 async function renamePhoto(photo) {
   if (!item.value || !photo || !canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   const currentName = String(photo.original_name || '')
   const dotIndex = currentName.lastIndexOf('.')
@@ -731,7 +756,7 @@ async function renamePhoto(photo) {
   if (!normalized) return
 
   try {
-    await api.patch(`/series/${item.value.id}/photos/${photo.id}`, {
+    await api.patch(`/series/${seriesKey}/photos/${photo.id}`, {
       original_name: normalized,
     })
 
@@ -742,7 +767,8 @@ async function renamePhoto(photo) {
 }
 
 function downloadPhotoOriginal(photo) {
-  if (!item.value?.id || !photo?.id) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey || !photo?.id) return
 
   const fallbackName = photo?.original_name || `photo-${photo?.id || 'original'}.jpg`
   const parseFileName = (contentDisposition) => {
@@ -761,7 +787,7 @@ function downloadPhotoOriginal(photo) {
     return asciiMatch?.[1] || fallbackName
   }
 
-  api.get(`/series/${item.value.id}/photos/${photo.id}/download`, {
+  api.get(`/series/${seriesKey}/photos/${photo.id}/download`, {
     responseType: 'blob',
   }).then((response) => {
     const fileName = parseFileName(response.headers?.['content-disposition'])
@@ -780,14 +806,16 @@ function downloadPhotoOriginal(photo) {
 }
 
 async function refreshAutoTags() {
-  if (!item.value?.id || !canEditSeries.value) return
+  if (!canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   refreshingTags.value = true
   refreshTagsError.value = ''
   refreshTagsInfo.value = ''
 
   try {
-    const { data } = await api.post(`/series/${item.value.id}/photos/retag`)
+    const { data } = await api.post(`/series/${seriesKey}/photos/retag`)
     const processed = Number(data?.data?.processed || 0)
     const failed = Number(data?.data?.failed || 0)
     const tagsCount = Number(data?.data?.tags_count || 0)
@@ -815,7 +843,9 @@ async function refreshAutoTags() {
 }
 
 async function addSeriesTag() {
-  if (!item.value?.id || !canEditSeries.value) return
+  if (!canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   const prepared = String(newTagName.value || '').trim()
   if (!prepared) {
@@ -827,7 +857,7 @@ async function addSeriesTag() {
   tagEditError.value = ''
 
   try {
-    const { data } = await api.post(`/series/${item.value.id}/tags`, {
+    const { data } = await api.post(`/series/${seriesKey}/tags`, {
       tags: [prepared],
     })
 
@@ -862,13 +892,15 @@ function closeTagInput() {
 }
 
 async function removeSeriesTag(tag) {
-  if (!item.value?.id || !tag?.id || !canEditSeries.value) return
+  if (!tag?.id || !canEditSeries.value) return
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) return
 
   removingTagId.value = tag.id
   tagEditError.value = ''
 
   try {
-    const { data } = await api.delete(`/series/${item.value.id}/tags/${tag.id}`)
+    const { data } = await api.delete(`/series/${seriesKey}/tags/${tag.id}`)
     item.value = mergeSeriesPayload(data?.data)
   } catch (e) {
     tagEditError.value = e?.response?.data?.message || t('Не удалось удалить тег.')
