@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   open: {
@@ -32,6 +32,10 @@ const previewNaturalHeight = ref(0)
 const viewportWidth = ref(window.innerWidth)
 const viewportHeight = ref(window.innerHeight)
 const previewStageRef = ref(null)
+const previewImageRef = ref(null)
+const isZoomOverflowing = ref(false)
+const isZoomOverflowingX = ref(false)
+const isZoomOverflowingY = ref(false)
 const isDraggingPreview = ref(false)
 const dragStartX = ref(0)
 const dragStartY = ref(0)
@@ -74,40 +78,122 @@ watch(
     zoomPercent.value = 100
     previewNaturalWidth.value = 0
     previewNaturalHeight.value = 0
+    isZoomOverflowing.value = false
+    isZoomOverflowingX.value = false
+    isZoomOverflowingY.value = false
     isDraggingPreview.value = false
   },
   { immediate: true },
 )
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+async function applyZoom(nextZoom) {
+  const boundedZoom = clamp(nextZoom, 50, 300)
+  if (boundedZoom === zoomPercent.value) {
+    return
+  }
+
+  const stage = previewStageRef.value
+  const image = previewImageRef.value
+
+  if (!stage || !image) {
+    zoomPercent.value = boundedZoom
+    return
+  }
+
+  const centerContentX = stage.scrollLeft + stage.clientWidth / 2
+  const centerContentY = stage.scrollTop + stage.clientHeight / 2
+  const imageLeft = image.offsetLeft
+  const imageTop = image.offsetTop
+  const imageWidth = image.clientWidth
+  const imageHeight = image.clientHeight
+  const relX = imageWidth > 0 ? clamp((centerContentX - imageLeft) / imageWidth, 0, 1) : 0.5
+  const relY = imageHeight > 0 ? clamp((centerContentY - imageTop) / imageHeight, 0, 1) : 0.5
+
+  zoomPercent.value = boundedZoom
+  await nextTick()
+
+  const nextStage = previewStageRef.value
+  const nextImage = previewImageRef.value
+  if (!nextStage || !nextImage) {
+    return
+  }
+
+  const targetContentX = nextImage.offsetLeft + relX * nextImage.clientWidth
+  const targetContentY = nextImage.offsetTop + relY * nextImage.clientHeight
+  const nextScrollLeft = targetContentX - nextStage.clientWidth / 2
+  const nextScrollTop = targetContentY - nextStage.clientHeight / 2
+  const maxScrollLeft = Math.max(0, nextStage.scrollWidth - nextStage.clientWidth)
+  const maxScrollTop = Math.max(0, nextStage.scrollHeight - nextStage.clientHeight)
+
+  nextStage.scrollLeft = clamp(nextScrollLeft, 0, maxScrollLeft)
+  nextStage.scrollTop = clamp(nextScrollTop, 0, maxScrollTop)
+  refreshZoomOverflow()
+}
+
 function zoomIn() {
-  zoomPercent.value = Math.min(300, zoomPercent.value + 10)
+  applyZoom(zoomPercent.value + 10)
 }
 
 function zoomOut() {
-  zoomPercent.value = Math.max(50, zoomPercent.value - 10)
+  applyZoom(zoomPercent.value - 10)
 }
 
 function onPreviewImageLoad(event) {
   previewNaturalWidth.value = event.target?.naturalWidth || 0
   previewNaturalHeight.value = event.target?.naturalHeight || 0
+  nextTick(() => {
+    refreshZoomOverflow()
+  })
 }
 
 function syncViewport() {
   viewportWidth.value = window.innerWidth
   viewportHeight.value = window.innerHeight
+  nextTick(() => {
+    refreshZoomOverflow()
+  })
+}
+
+function refreshZoomOverflow() {
+  const stage = previewStageRef.value
+  const image = previewImageRef.value
+
+  if (!stage || !image || zoomPercent.value <= 100) {
+    isZoomOverflowing.value = false
+    isZoomOverflowingX.value = false
+    isZoomOverflowingY.value = false
+    return
+  }
+
+  const overflowX = image.offsetWidth > stage.clientWidth + 1
+  const overflowY = image.offsetHeight > stage.clientHeight + 1
+  isZoomOverflowingX.value = overflowX
+  isZoomOverflowingY.value = overflowY
+  isZoomOverflowing.value = overflowX || overflowY
 }
 
 function onPreviewMouseDown(event) {
+  if (event.button !== 0) {
+    return
+  }
+
   const stage = previewStageRef.value
   if (!stage) {
     return
   }
 
+  event.preventDefault()
   isDraggingPreview.value = true
   dragStartX.value = event.clientX
   dragStartY.value = event.clientY
   dragScrollLeft.value = stage.scrollLeft
   dragScrollTop.value = stage.scrollTop
+  window.addEventListener('mousemove', onPreviewMouseMove)
+  window.addEventListener('mouseup', stopPreviewDrag)
 }
 
 function onPreviewMouseMove(event) {
@@ -128,6 +214,8 @@ function onPreviewMouseMove(event) {
 }
 
 function stopPreviewDrag() {
+  window.removeEventListener('mousemove', onPreviewMouseMove)
+  window.removeEventListener('mouseup', stopPreviewDrag)
   isDraggingPreview.value = false
 }
 
@@ -137,6 +225,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncViewport)
+  window.removeEventListener('mousemove', onPreviewMouseMove)
+  window.removeEventListener('mouseup', stopPreviewDrag)
 })
 </script>
 
@@ -161,12 +251,13 @@ onBeforeUnmount(() => {
         ›
       </button>
 
+      <button type="button" class="preview-close-btn" @click="emit('close')">×</button>
+
       <div class="preview-toolbar">
         <div class="preview-actions">
           <button type="button" class="preview-btn" @click="zoomOut">-</button>
           <span class="zoom-value">{{ zoomPercent }}%</span>
           <button type="button" class="preview-btn" @click="zoomIn">+</button>
-          <button type="button" class="preview-btn preview-btn-close" @click="emit('close')">×</button>
         </div>
       </div>
 
@@ -175,12 +266,17 @@ onBeforeUnmount(() => {
         class="preview-stage"
         :class="{ 'preview-stage--dragging': isDraggingPreview }"
         @mousedown="onPreviewMouseDown"
-        @mousemove="onPreviewMouseMove"
-        @mouseup="stopPreviewDrag"
-        @mouseleave="stopPreviewDrag"
       >
-        <div class="preview-inner">
+        <div
+          class="preview-inner"
+          :class="{
+            'preview-inner--zoomed': zoomPercent > 100 && isZoomOverflowing,
+            'preview-inner--overflow-x': zoomPercent > 100 && isZoomOverflowingX,
+            'preview-inner--overflow-y': zoomPercent > 100 && isZoomOverflowingY,
+          }"
+        >
           <img
+            ref="previewImageRef"
             class="preview-image"
             :src="src"
             :alt="photo.original_name || 'photo'"
@@ -218,7 +314,7 @@ onBeforeUnmount(() => {
 .preview-toolbar {
   position: absolute;
   top: 10px;
-  right: 10px;
+  right: 62px;
   z-index: 3;
   height: 40px;
   background: #1e2621;
@@ -268,9 +364,24 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.preview-btn-close {
-  min-width: 32px;
-  font-size: 18px;
+.preview-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  border: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  color: #eef4ef;
+  background: rgba(30, 38, 33, 0.86);
+}
+
+.preview-close-btn:hover {
+  background: rgba(62, 77, 68, 0.92);
 }
 
 .preview-stage {
@@ -287,11 +398,26 @@ onBeforeUnmount(() => {
 }
 
 .preview-inner {
-  min-width: 100%;
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.preview-inner--zoomed {
+  width: max-content;
+  height: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.preview-inner--overflow-x {
+  justify-content: flex-start;
+}
+
+.preview-inner--overflow-y {
+  align-items: flex-start;
 }
 
 .preview-image {
@@ -344,7 +470,15 @@ onBeforeUnmount(() => {
 
   .preview-toolbar {
     top: 8px;
+    right: 54px;
+  }
+
+  .preview-close-btn {
+    top: 8px;
     right: 8px;
+    width: 38px;
+    height: 38px;
+    font-size: 22px;
   }
 
   .preview-nav-btn {
