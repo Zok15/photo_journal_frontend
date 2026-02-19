@@ -26,6 +26,7 @@ const showUploadForm = ref(false)
 const isEditingSeries = ref(false)
 const editTitle = ref('')
 const editDescription = ref('')
+const editIsPublic = ref(false)
 const editError = ref('')
 const savingSeries = ref(false)
 const showDeleteSeriesModal = ref(false)
@@ -188,6 +189,7 @@ function openEditSeries() {
   editError.value = ''
   editTitle.value = item.value.title || ''
   editDescription.value = item.value.description || ''
+  editIsPublic.value = Boolean(item.value.is_public)
 }
 
 function cancelEditSeries() {
@@ -209,6 +211,7 @@ async function saveSeries() {
     const { data } = await api.patch(`/series/${item.value.id}`, {
       title: editTitle.value,
       description: editDescription.value || null,
+      is_public: editIsPublic.value,
     })
 
     const updated = data?.data || {}
@@ -787,7 +790,15 @@ watch(() => route.params.id, () => {
         <header class="series-header">
           <div>
             <h1>{{ item.title }}</h1>
-            <p class="series-meta">{{ formatDate(item.created_at) }} · {{ item.photos_count }} фото</p>
+            <p class="series-meta">
+              {{ formatDate(item.created_at) }} · {{ item.photos_count }} фото
+              <span
+                class="series-visibility"
+                :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
+              >
+                {{ item.is_public ? 'Публичная' : 'Приватная' }}
+              </span>
+            </p>
           </div>
           <div class="series-actions">
             <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
@@ -898,6 +909,10 @@ watch(() => route.params.id, () => {
             <label>
               Описание
               <textarea v-model="editDescription" rows="3"></textarea>
+            </label>
+            <label class="checkbox-field">
+              <input v-model="editIsPublic" type="checkbox" />
+              <span>Публичная серия</span>
             </label>
 
             <p v-if="editError" class="error">{{ editError }}</p>
@@ -1066,8 +1081,32 @@ watch(() => route.params.id, () => {
 
 .series-meta {
   margin: 8px 0 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   color: var(--muted);
   font-size: 15px;
+}
+
+.series-visibility {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.series-visibility--public {
+  background: rgba(111, 161, 127, 0.18);
+  color: #2f6942;
+}
+
+.series-visibility--private {
+  background: rgba(125, 134, 128, 0.16);
+  color: #4b574f;
 }
 
 .series-description {
@@ -1246,6 +1285,19 @@ watch(() => route.params.id, () => {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #4b574f;
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .inline-actions {

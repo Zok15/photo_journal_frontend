@@ -70,6 +70,7 @@ const calendarMonthOptions = [
 
 const createTitle = ref('')
 const createDescription = ref('')
+const createIsPublic = ref(false)
 const createFiles = ref([])
 const createFilesInput = ref(null)
 const creating = ref(false)
@@ -905,6 +906,7 @@ async function createSeries() {
     if (createDescription.value.trim()) {
       formData.append('description', createDescription.value)
     }
+    formData.append('is_public', createIsPublic.value ? '1' : '0')
 
     for (const file of optimizedFiles) {
       formData.append('photos[]', file)
@@ -915,6 +917,7 @@ async function createSeries() {
     createWarnings.value = [...warnings, ...(data.photos_failed || [])]
     createTitle.value = ''
     createDescription.value = ''
+    createIsPublic.value = false
     createFiles.value = []
     showCreateForm.value = false
 
@@ -1395,6 +1398,11 @@ function toggleMobileFilters() {
                 <textarea v-model="createDescription" rows="3"></textarea>
               </label>
 
+              <label class="checkbox-field">
+                <input v-model="createIsPublic" type="checkbox" />
+                <span>Публичная серия</span>
+              </label>
+
               <label>
                 Фотографии
                 <input
@@ -1445,6 +1453,12 @@ function toggleMobileFilters() {
               <div class="series-meta">
                 <span>{{ formatDate(item.created_at) }}</span>
                 <span>{{ item.photos_count }} фото</span>
+                <span
+                  class="series-visibility"
+                  :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
+                >
+                  {{ item.is_public ? 'Публичная' : 'Приватная' }}
+                </span>
               </div>
 
               <p class="series-desc">{{ item.description || 'Описание пока не добавлено.' }}</p>
@@ -2001,6 +2015,19 @@ function toggleMobileFilters() {
   background: #fff;
 }
 
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #4b574f;
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .search-row {
   margin-bottom: 14px;
   width: 100%;
@@ -2069,9 +2096,30 @@ function toggleMobileFilters() {
 .series-meta {
   margin-top: 7px;
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.series-visibility {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.series-visibility--public {
+  background: rgba(111, 161, 127, 0.18);
+  color: #2f6942;
+}
+
+.series-visibility--private {
+  background: rgba(125, 134, 128, 0.16);
+  color: #4b574f;
 }
 
 .series-desc {
