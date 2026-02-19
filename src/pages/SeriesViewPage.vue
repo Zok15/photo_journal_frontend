@@ -8,6 +8,7 @@ import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { findInvalidUploadFile } from '../lib/uploadPolicy'
+import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,6 +57,7 @@ let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
 
 const selectedPhoto = ref(null)
+const currentUser = ref(getUser())
 
 const photoList = computed(() => item.value?.photos || [])
 const selectedPhotoIndex = computed(() => {
@@ -68,6 +70,12 @@ const selectedPhotoIndex = computed(() => {
 const canPreviewPrev = computed(() => selectedPhotoIndex.value > 0)
 const canPreviewNext = computed(() => {
   return selectedPhotoIndex.value >= 0 && selectedPhotoIndex.value < photoList.value.length - 1
+})
+const canEditSeries = computed(() => {
+  const ownerId = Number(item.value?.user_id || 0)
+  const currentUserId = Number(currentUser.value?.id || 0)
+
+  return ownerId > 0 && currentUserId > 0 && ownerId === currentUserId
 })
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
@@ -183,7 +191,7 @@ function formatValidationError(err) {
 }
 
 function openEditSeries() {
-  if (!item.value) return
+  if (!item.value || !canEditSeries.value) return
 
   isEditingSeries.value = true
   editError.value = ''
@@ -198,7 +206,7 @@ function cancelEditSeries() {
 }
 
 async function saveSeries() {
-  if (!item.value) return
+  if (!item.value || !canEditSeries.value) return
   if (!editTitle.value.trim()) {
     editError.value = 'Название обязательно.'
     return
@@ -286,6 +294,10 @@ function onKeydown(event) {
 }
 
 function onPhotoDragStart(photo, event) {
+  if (!canEditSeries.value) {
+    return
+  }
+
   if (reorderingPhotos.value) {
     return
   }
@@ -314,6 +326,11 @@ function onPhotoDragEnd() {
 }
 
 async function onPhotoDrop(targetPhoto) {
+  if (!canEditSeries.value) {
+    onPhotoDragEnd()
+    return
+  }
+
   if (!item.value || draggingPhotoId.value === null || draggingPhotoId.value === targetPhoto.id) {
     onPhotoDragEnd()
     return
@@ -362,6 +379,10 @@ async function onPhotoDrop(targetPhoto) {
 }
 
 function openDeleteSeriesModal() {
+  if (!canEditSeries.value) {
+    return
+  }
+
   showDeleteSeriesModal.value = true
   deleteSeriesError.value = ''
 }
@@ -393,7 +414,7 @@ function closeDeletePhotoModal(force = false) {
 }
 
 async function deleteSeries() {
-  if (!item.value) return
+  if (!item.value || !canEditSeries.value) return
 
   deletingSeries.value = true
   deleteSeriesError.value = ''
@@ -410,6 +431,10 @@ async function deleteSeries() {
 }
 
 async function uploadPhotos() {
+  if (!canEditSeries.value) {
+    return
+  }
+
   uploadError.value = ''
   uploadWarnings.value = []
 
@@ -458,12 +483,12 @@ async function uploadPhotos() {
 }
 
 async function deletePhoto(photo) {
-  if (!item.value || !photo) return
+  if (!item.value || !photo || !canEditSeries.value) return
   openDeletePhotoModal(photo)
 }
 
 async function confirmDeletePhoto() {
-  if (!item.value || !photoToDelete.value) return
+  if (!item.value || !photoToDelete.value || !canEditSeries.value) return
 
   const deletedPhotoId = Number(photoToDelete.value.id)
   let deleted = false
@@ -509,7 +534,7 @@ async function confirmDeletePhoto() {
 }
 
 async function renamePhoto(photo) {
-  if (!item.value || !photo) return
+  if (!item.value || !photo || !canEditSeries.value) return
 
   const currentName = String(photo.original_name || '')
   const dotIndex = currentName.lastIndexOf('.')
@@ -575,7 +600,7 @@ function downloadPhotoOriginal(photo) {
 }
 
 async function refreshAutoTags() {
-  if (!item.value?.id) return
+  if (!item.value?.id || !canEditSeries.value) return
 
   refreshingTags.value = true
   refreshTagsError.value = ''
@@ -610,7 +635,7 @@ async function refreshAutoTags() {
 }
 
 async function addSeriesTag() {
-  if (!item.value?.id) return
+  if (!item.value?.id || !canEditSeries.value) return
 
   const prepared = String(newTagName.value || '').trim()
   if (!prepared) {
@@ -638,6 +663,7 @@ async function addSeriesTag() {
 }
 
 function openTagInput() {
+  if (!canEditSeries.value) return
   showTagInput.value = true
   tagEditError.value = ''
   scheduleTagSuggestions()
@@ -656,7 +682,7 @@ function closeTagInput() {
 }
 
 async function removeSeriesTag(tag) {
-  if (!item.value?.id || !tag?.id) return
+  if (!item.value?.id || !tag?.id || !canEditSeries.value) return
 
   removingTagId.value = tag.id
   tagEditError.value = ''
@@ -739,18 +765,43 @@ async function loadSeries(options = {}) {
   }
 
   try {
-    const { data } = await api.get(`/series/${route.params.id}`, {
-      params: {
-        include_photos: 1,
-        photos_limit: 50,
-      },
-    })
+    let data = null
+
+    if (isAuthenticated.value) {
+      try {
+        const response = await api.get(`/series/${route.params.id}`, {
+          params: {
+            include_photos: 1,
+            photos_limit: 50,
+          },
+        })
+        data = response.data
+      } catch (e) {
+        if (e?.response?.status !== 401) {
+          throw e
+        }
+      }
+    }
+
+    if (!data) {
+      const response = await api.get(`/public/series/${route.params.id}`, {
+        params: {
+          include_photos: 1,
+          photos_limit: 200,
+        },
+      })
+      data = response.data
+    }
 
     photoUrlVersion.value = Date.now()
     item.value = data.data
   } catch (e) {
     if (!silent) {
-      error.value = e?.response?.data?.message || 'Failed to load series.'
+      if (e?.response?.status === 404) {
+        error.value = 'Серия не найдена или не является публичной.'
+      } else {
+        error.value = e?.response?.data?.message || 'Failed to load series.'
+      }
     }
   } finally {
     if (!silent) {
@@ -759,9 +810,34 @@ async function loadSeries(options = {}) {
   }
 }
 
+async function loadProfileMeta() {
+  if (!isAuthenticated.value) {
+    return
+  }
+
+  if (currentUser.value?.id) {
+    return
+  }
+
+  try {
+    const { data } = await api.get('/profile')
+    const user = data?.data || null
+    if (!user) {
+      return
+    }
+
+    currentUser.value = user
+    setCurrentUser(user)
+  } catch (_) {
+    // Keep read-only mode when profile metadata is unavailable.
+  }
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  loadSeries()
+  loadProfileMeta().finally(() => {
+    loadSeries()
+  })
 })
 
 onBeforeUnmount(() => {
@@ -774,14 +850,16 @@ onBeforeUnmount(() => {
 
 watch(() => route.params.id, () => {
   closePreview()
-  loadSeries()
+  loadProfileMeta().finally(() => {
+    loadSeries()
+  })
 })
 </script>
 
 <template>
   <div class="series-page">
     <div class="series-shell">
-      <p class="back-link"><RouterLink to="/series">← К списку серий</RouterLink></p>
+      <p class="back-link"><RouterLink :to="canEditSeries ? '/series' : '/public/series'">← К списку серий</RouterLink></p>
 
       <p v-if="loading" class="state-text">Загрузка...</p>
       <p v-else-if="error" class="error">{{ error }}</p>
@@ -800,7 +878,7 @@ watch(() => route.params.id, () => {
               </span>
             </p>
           </div>
-          <div class="series-actions">
+          <div v-if="canEditSeries" class="series-actions">
             <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
               {{ showUploadForm ? 'Скрыть форму' : 'Добавить фото' }}
             </button>
@@ -821,6 +899,7 @@ watch(() => route.params.id, () => {
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}
             <button
+              v-if="canEditSeries"
               type="button"
               class="series-tag-remove"
               :disabled="removingTagId === tag.id"
@@ -831,7 +910,7 @@ watch(() => route.params.id, () => {
           </span>
 
           <button
-            v-if="!showTagInput"
+            v-if="canEditSeries && !showTagInput"
             type="button"
             class="series-tag-add"
             @click="openTagInput"
@@ -839,7 +918,7 @@ watch(() => route.params.id, () => {
             +
           </button>
 
-          <form v-else class="series-tag-inline-form" @submit.prevent="addSeriesTag">
+          <form v-if="canEditSeries && showTagInput" class="series-tag-inline-form" @submit.prevent="addSeriesTag">
             <div class="series-tag-input-wrap">
               <input
                 v-model="newTagName"
@@ -869,7 +948,7 @@ watch(() => route.params.id, () => {
         <p v-else-if="refreshTagsInfo" class="hint">{{ refreshTagsInfo }}</p>
         <p v-if="tagEditError" class="error">{{ tagEditError }}</p>
 
-        <section v-if="showUploadForm" class="upload-panel">
+        <section v-if="canEditSeries && showUploadForm" class="upload-panel">
           <h2>Добавить фото</h2>
 
           <form class="upload-form" @submit.prevent="uploadPhotos">
@@ -899,7 +978,7 @@ watch(() => route.params.id, () => {
           </form>
         </section>
 
-        <section v-if="isEditingSeries" class="upload-panel">
+        <section v-if="canEditSeries && isEditingSeries" class="upload-panel">
           <h2>Редактировать серию</h2>
           <form class="upload-form" @submit.prevent="saveSeries">
             <label>
@@ -937,7 +1016,7 @@ watch(() => route.params.id, () => {
               'photo-card--dragging': draggingPhotoId === photo.id,
               'photo-card--drag-over': dragOverPhotoId === photo.id,
             }"
-            draggable="true"
+            :draggable="canEditSeries"
             @dragstart="onPhotoDragStart(photo, $event)"
             @dragenter.prevent="onPhotoDragEnter(photo)"
             @dragover.prevent
@@ -956,8 +1035,8 @@ watch(() => route.params.id, () => {
                 <span>{{ photo.mime }} · {{ formatSize(photo.size) }}</span>
                 <div class="thumb-actions">
                   <button type="button" class="icon-ghost-btn" title="Скачать оригинал" @click.stop="downloadPhotoOriginal(photo)">⤓</button>
-                  <button type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(photo)">✎</button>
-                  <button type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(photo)">🗑</button>
+                  <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Переименовать" @click.stop="renamePhoto(photo)">✎</button>
+                  <button v-if="canEditSeries" type="button" class="icon-ghost-btn" title="Удалить" @click.stop="deletePhoto(photo)">🗑</button>
                 </div>
               </div>
             </div>
@@ -979,7 +1058,7 @@ watch(() => route.params.id, () => {
       @next="openNextPhoto"
     />
 
-    <div v-if="showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
+    <div v-if="canEditSeries && showDeleteSeriesModal" class="confirm-overlay" @click.self="closeDeleteSeriesModal">
       <div class="confirm-modal">
         <h2>Удалить серию?</h2>
         <p>
@@ -1000,7 +1079,7 @@ watch(() => route.params.id, () => {
       </div>
     </div>
 
-    <div v-if="showDeletePhotoModal" class="confirm-overlay" @click.self="closeDeletePhotoModal">
+    <div v-if="canEditSeries && showDeletePhotoModal" class="confirm-overlay" @click.self="closeDeletePhotoModal">
       <div class="confirm-modal">
         <h2>Удалить фото?</h2>
         <p>

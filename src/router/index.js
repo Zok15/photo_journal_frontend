@@ -4,6 +4,7 @@ import RegisterPage from '../pages/RegisterPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
+import PublicSeriesListPage from '../pages/PublicSeriesListPage.vue'
 import { getToken } from '../lib/session'
 
 const routes = [
@@ -21,7 +22,9 @@ const routes = [
   },
   {
     path: '/',
-    redirect: '/series',
+    name: 'series.public',
+    component: PublicSeriesListPage,
+    alias: ['/public/series'],
   },
   {
     path: '/series',
@@ -33,7 +36,6 @@ const routes = [
     path: '/series/:id',
     name: 'series.view',
     component: SeriesViewPage,
-    meta: { requiresAuth: true },
   },
   {
     path: '/profile',

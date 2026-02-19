@@ -26,6 +26,7 @@ async function logout() {
       </div>
 
       <nav class="app-nav">
+        <RouterLink to="/public/series" class="nav-link">Публичные</RouterLink>
         <RouterLink v-if="signedIn" to="/series" class="nav-link">Серии</RouterLink>
         <RouterLink v-if="signedIn" to="/profile" class="nav-link">Профиль</RouterLink>
         <RouterLink v-if="!signedIn" to="/login" class="nav-link">Вход</RouterLink>
