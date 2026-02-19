@@ -20,10 +20,10 @@ async function logout() {
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand">
+      <RouterLink to="/" class="brand brand-link">
         <img src="/logo.png" alt="Bird logo" class="brand-logo" />
-        <strong>Photo Journal</strong>
-      </div>
+        <strong>PhotoLog</strong>
+      </RouterLink>
 
       <nav class="app-nav">
         <RouterLink to="/public/series" class="nav-link">Публичные</RouterLink>
@@ -62,6 +62,11 @@ async function logout() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.brand-link {
+  color: inherit;
+  text-decoration: none;
 }
 
 .brand-logo {
