@@ -12,6 +12,7 @@ const name = ref('')
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
+const personalDataConsent = ref(false)
 const loading = ref(false)
 const error = ref('')
 
@@ -29,6 +30,7 @@ async function submit() {
       name: name.value,
       email: email.value,
       password: password.value,
+      personal_data_consent: personalDataConsent.value,
       locale: currentLocale.value,
     })
 
@@ -73,6 +75,15 @@ async function submit() {
         <label class="field">
           <span>{{ t('Повторите пароль') }}</span>
           <input v-model="passwordConfirm" type="password" required minlength="8" />
+        </label>
+
+        <label class="consent-field">
+          <input v-model="personalDataConsent" type="checkbox" required />
+          <span>
+            {{ t('Я согласен(а) на обработку персональных данных') }}
+            {{ t('и принимаю') }}
+            <RouterLink to="/privacy-policy">{{ t('Политика конфиденциальности') }}</RouterLink>
+          </span>
         </label>
 
         <button type="submit" class="primary-btn" :disabled="loading">
@@ -160,6 +171,29 @@ async function submit() {
   border: 1px solid #cfd6ce;
   border-radius: 8px;
   background: #fff;
+}
+
+.consent-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.consent-field input[type='checkbox'] {
+  margin-top: 2px;
+}
+
+.consent-field a {
+  margin-left: 4px;
+  color: #335e49;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.consent-field a:hover {
+  text-decoration: underline;
 }
 
 .aux {

@@ -3,6 +3,7 @@ import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
 import ForgotPasswordPage from '../pages/ForgotPasswordPage.vue'
 import ResetPasswordPage from '../pages/ResetPasswordPage.vue'
+import PrivacyPolicyPage from '../pages/PrivacyPolicyPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
@@ -60,6 +61,18 @@ const routes = [
         title: 'Новый пароль',
         description: 'Установка нового пароля по ссылке восстановления.',
         index: false,
+      },
+    },
+  },
+  {
+    path: '/privacy-policy',
+    name: 'privacy-policy',
+    component: PrivacyPolicyPage,
+    meta: {
+      seo: {
+        title: 'Политика конфиденциальности',
+        description: 'Информация об обработке и защите персональных данных в PhotoLog.',
+        index: true,
       },
     },
   },
