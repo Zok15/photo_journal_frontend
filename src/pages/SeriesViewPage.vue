@@ -223,7 +223,8 @@ function buildPreviewRows(photos, containerWidth) {
 
   if (items.length === 1) {
     const ratio = items[0].ratio || 1
-    const height = Math.max(150, Math.min(300, containerWidth / ratio))
+    // Keep single-tile row within container width.
+    const height = Math.min(300, containerWidth / ratio)
     return {
       rows: [{ gap: 0, height, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
     }
@@ -315,10 +316,8 @@ function buildPreviewRows(photos, containerWidth) {
       cursor += count
       const ratioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
       const rowWidth = containerWidth - previewGap * (chunk.length - 1)
-      const rowHeight = Math.max(
-        minRowHeight,
-        Math.min(maxRowHeight, rowWidth / ratioSum),
-      )
+      // Fallback rows must strictly fit container width.
+      const rowHeight = Math.min(maxRowHeight, rowWidth / ratioSum)
 
       rows.push({
         gap: previewGap,
@@ -1672,15 +1671,19 @@ watch(previewGridRef, () => {
 
 .preview-grid {
   width: 100%;
+  max-width: 100%;
   display: grid;
   row-gap: 12px;
   margin-top: 8px;
+  overflow-x: hidden;
 }
 
 .preview-row {
   width: 100%;
+  max-width: 100%;
   display: flex;
   align-items: flex-start;
+  overflow: hidden;
 }
 
 .preview-card {
