@@ -201,6 +201,14 @@ function buildPreviewRows(photos, containerWidth) {
   const previewGap = 10
   const minPerRow = 2
   const maxPerRow = 5
+  const minTileWidth = containerWidth <= 760 ? 150 : 180
+  const dynamicMaxPerRow = Math.max(
+    minPerRow,
+    Math.min(
+      maxPerRow,
+      Math.floor((containerWidth + previewGap) / (minTileWidth + previewGap)),
+    ),
+  )
   const targetRowHeight = 300
   const minRowHeight = 210
   const maxRowHeight = 420
@@ -221,7 +229,7 @@ function buildPreviewRows(photos, containerWidth) {
     }
   }
 
-  const minRows = Math.ceil(items.length / maxPerRow)
+  const minRows = Math.ceil(items.length / dynamicMaxPerRow)
   const maxRows = Math.floor(items.length / minPerRow)
   let best = null
 
@@ -230,7 +238,7 @@ function buildPreviewRows(photos, containerWidth) {
     const extra = items.length % rowsCount
     const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
 
-    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
+    if (counts.some((count) => count < minPerRow || count > dynamicMaxPerRow)) {
       continue
     }
 
@@ -260,6 +268,7 @@ function buildPreviewRows(photos, containerWidth) {
 
       const rowHeight = rowHeights[rowIndex]
       const widths = chunk.map((item) => item.ratio * rowHeight)
+      const minWidthInRow = widths.length ? Math.min(...widths) : 0
       const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
       const used = rowTotalWidth + previewGap * (count - 1)
       emptySpace += Math.abs(containerWidth - used)
@@ -268,6 +277,9 @@ function buildPreviewRows(photos, containerWidth) {
         outOfRangePenalty += Math.abs(minRowHeight - rowHeight) * 6
       } else if (rowHeight > maxRowHeight) {
         outOfRangePenalty += Math.abs(rowHeight - maxRowHeight) * 6
+      }
+      if (minWidthInRow < minTileWidth) {
+        outOfRangePenalty += (minTileWidth - minWidthInRow) * 10
       }
 
       rows.push({
