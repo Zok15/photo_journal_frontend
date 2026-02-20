@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
+import ForgotPasswordPage from '../pages/ForgotPasswordPage.vue'
+import ResetPasswordPage from '../pages/ResetPasswordPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
 import SeriesViewPage from '../pages/SeriesViewPage.vue'
@@ -31,6 +33,32 @@ const routes = [
       seo: {
         title: 'Регистрация',
         description: 'Создайте аккаунт для работы с вашими сериями и фотографиями.',
+        index: false,
+      },
+    },
+  },
+  {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: ForgotPasswordPage,
+    meta: {
+      guestOnly: true,
+      seo: {
+        title: 'Восстановление пароля',
+        description: 'Запрос ссылки для восстановления пароля.',
+        index: false,
+      },
+    },
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: ResetPasswordPage,
+    meta: {
+      guestOnly: true,
+      seo: {
+        title: 'Новый пароль',
+        description: 'Установка нового пароля по ссылке восстановления.',
         index: false,
       },
     },

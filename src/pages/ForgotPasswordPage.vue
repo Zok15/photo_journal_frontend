@@ -1,34 +1,25 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
-import { setSession } from '../lib/session'
 import { t } from '../lib/i18n'
 
-const route = useRoute()
-const router = useRouter()
-
 const email = ref('')
-const password = ref('')
 const loading = ref(false)
 const error = ref('')
+const info = ref('')
 
 async function submit() {
   loading.value = true
   error.value = ''
+  info.value = ''
 
   try {
-    const { data } = await api.post('/auth/login', {
+    const { data } = await api.post('/auth/forgot-password', {
       email: email.value,
-      password: password.value,
     })
-
-    setSession(data.token, data.user || null)
-
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/series'
-    router.push(redirect)
+    info.value = data?.message || t('Если аккаунт существует, мы отправили ссылку для восстановления.')
   } catch (e) {
-    error.value = e?.response?.data?.message || t('Login failed.')
+    error.value = e?.response?.data?.message || t('Не удалось отправить ссылку для восстановления.')
   } finally {
     loading.value = false
   }
@@ -36,14 +27,10 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-page">
-    <section class="login-card">
-      <div class="login-brand">
-        <img src="/logo.png" alt="Bird logo" class="brand-logo" />
-        <p class="eyebrow">{{ t('Фото Дневник') }}</p>
-      </div>
-      <h1>{{ t('Вход в дневник') }}</h1>
-      <p class="lead">{{ t('Авторизация для работы с вашими сериями и фотографиями.') }}</p>
+  <div class="forgot-page">
+    <section class="forgot-card">
+      <h1>{{ t('Восстановление пароля') }}</h1>
+      <p class="lead">{{ t('Введите email, и мы отправим ссылку для установки нового пароля.') }}</p>
 
       <form class="form" @submit.prevent="submit">
         <label class="field">
@@ -51,18 +38,15 @@ async function submit() {
           <input v-model="email" type="email" required />
         </label>
 
-        <label class="field">
-          <span>{{ t('Пароль') }}</span>
-          <input v-model="password" type="password" required />
-        </label>
-
         <button type="submit" class="primary-btn" :disabled="loading">
-          {{ loading ? t('Входим...') : t('Войти') }}
+          {{ loading ? t('Отправляем...') : t('Отправить ссылку') }}
         </button>
 
-        <p class="aux"><RouterLink to="/forgot-password">{{ t('Забыли пароль?') }}</RouterLink></p>
-        <p class="aux">{{ t('Нет аккаунта?') }} <RouterLink to="/register">{{ t('Зарегистрироваться') }}</RouterLink></p>
+        <p class="aux">
+          <RouterLink to="/login">{{ t('Вернуться ко входу') }}</RouterLink>
+        </p>
 
+        <p v-if="info" class="info">{{ info }}</p>
         <p v-if="error" class="error">{{ error }}</p>
       </form>
     </section>
@@ -70,7 +54,7 @@ async function submit() {
 </template>
 
 <style scoped>
-.login-page {
+.forgot-page {
   min-height: calc(100vh - 58px);
   background:
     radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
@@ -81,7 +65,7 @@ async function submit() {
   padding: 24px;
 }
 
-.login-card {
+.forgot-card {
   width: min(460px, 100%);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -91,26 +75,8 @@ async function submit() {
   color: var(--text);
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.login-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.brand-logo {
-  width: 30px;
-  height: 30px;
-  display: block;
-}
-
-.login-card h1 {
-  margin: 8px 0 6px;
+.forgot-card h1 {
+  margin: 0 0 6px;
   font-size: 34px;
   letter-spacing: -0.03em;
 }
@@ -146,8 +112,6 @@ async function submit() {
 
 .aux {
   margin: 0;
-  font-size: 14px;
-  color: var(--muted);
 }
 
 .aux a {
@@ -158,6 +122,11 @@ async function submit() {
 
 .aux a:hover {
   text-decoration: underline;
+}
+
+.info {
+  margin: 0;
+  color: #2f6942;
 }
 
 .error {
