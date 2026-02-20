@@ -24,6 +24,7 @@ const en = {
   'Повторите пароль': 'Repeat password',
   'Я согласен(а) на обработку персональных данных': 'I agree to the processing of personal data',
   'и принимаю': 'and accept',
+  'Политику конфиденциальности': 'Privacy policy',
   'Политика конфиденциальности': 'Privacy policy',
   'Эта политика описывает, какие персональные данные обрабатываются в PhotoLog и для каких целей.': 'This policy explains what personal data is processed in PhotoLog and for what purposes.',
   'Какие данные мы обрабатываем': 'What data we process',

@@ -82,7 +82,7 @@ async function submit() {
           <span>
             {{ t('Я согласен(а) на обработку персональных данных') }}
             {{ t('и принимаю') }}
-            <RouterLink to="/privacy-policy">{{ t('Политика конфиденциальности') }}</RouterLink>
+            <RouterLink to="/privacy-policy">{{ t('Политику конфиденциальности') }}</RouterLink>
           </span>
         </label>
 
