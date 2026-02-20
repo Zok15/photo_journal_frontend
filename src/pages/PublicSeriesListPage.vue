@@ -241,9 +241,14 @@ function buildPreviewRows(photos, containerWidth) {
   const targetRowHeight = 170
   const minRowHeight = 96
   const maxRowHeight = 260
+  const minPreviewRatio = 0.72
+  const maxPreviewRatio = 2.4
   const items = photos.map((photo) => ({
     photo,
-    ratio: previewAspectRatios.value[photo.id] || 1,
+    ratio: Math.min(
+      maxPreviewRatio,
+      Math.max(minPreviewRatio, previewAspectRatios.value[photo.id] || 1),
+    ),
   }))
 
   if (!items.length) {
@@ -1281,7 +1286,7 @@ watch([availableTags, visibleTagRows], async () => {
   border-radius: 8px;
   border: 1px solid rgba(125, 134, 128, 0.25);
   background: #eef2ec;
-  object-fit: contain;
+  object-fit: cover;
   opacity: 0;
   transform: scale(1.01);
   transition: opacity 0.18s ease-out, transform 0.22s ease-out;
