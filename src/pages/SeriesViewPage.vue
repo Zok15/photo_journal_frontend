@@ -1684,6 +1684,7 @@ watch(previewGridRef, () => {
   height: 100%;
   display: block;
   object-fit: cover;
+  --thumb-min-height: 0px;
 }
 
 .preview-card-meta {
@@ -1703,13 +1704,20 @@ watch(previewGridRef, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 2px;
+}
+
+.thumb-bottom span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .thumb-actions {
   display: flex;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .icon-ghost-btn {
@@ -1828,6 +1836,16 @@ watch(previewGridRef, () => {
   .preview-grid {
     row-gap: 10px;
     margin-top: 6px;
+  }
+
+  .preview-card-meta {
+    padding: 9px;
+    gap: 4px;
+  }
+
+  .icon-ghost-btn {
+    min-width: 28px;
+    height: 26px;
   }
 }
 </style>

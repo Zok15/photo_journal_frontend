@@ -69,7 +69,7 @@ function onError() {
 <style scoped>
 .thumb-wrap {
   position: relative;
-  min-height: 160px;
+  min-height: var(--thumb-min-height, 160px);
   background: #eef2ec;
 }
 
