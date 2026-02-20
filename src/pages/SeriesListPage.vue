@@ -1527,6 +1527,19 @@ function toggleMobileFilters() {
                   </div>
                 </div>
               </div>
+
+              <div v-if="(item.tags || []).length" class="series-card-tags">
+                <button
+                  v-for="tag in item.tags"
+                  :key="tag.id"
+                  type="button"
+                  class="tag-chip"
+                  :class="{ active: selectedTags.includes(tag.name) }"
+                  @click="toggleTag(tag.name)"
+                >
+                  #{{ tag.name }}
+                </button>
+              </div>
             </article>
           </div>
 
@@ -2158,6 +2171,13 @@ function toggleMobileFilters() {
   margin: 12px 0;
   color: #4b574f;
   font-size: 18px;
+}
+
+.series-card-tags {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .preview-grid {

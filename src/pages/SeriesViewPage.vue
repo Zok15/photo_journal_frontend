@@ -1169,7 +1169,7 @@ watch(previewGridRef, () => {
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}
             <button
-              v-if="canEditSeries"
+              v-if="canEditSeries && isEditingSeries"
               type="button"
               class="series-tag-remove"
               :disabled="removingTagId === tag.id"
@@ -1180,7 +1180,7 @@ watch(previewGridRef, () => {
           </span>
 
           <button
-            v-if="canEditSeries && !showTagInput"
+            v-if="canEditSeries && isEditingSeries && !showTagInput"
             type="button"
             class="series-tag-add"
             @click="openTagInput"
@@ -1188,7 +1188,7 @@ watch(previewGridRef, () => {
             +
           </button>
 
-          <form v-if="canEditSeries && showTagInput" class="series-tag-inline-form" @submit.prevent="addSeriesTag">
+          <form v-if="canEditSeries && isEditingSeries && showTagInput" class="series-tag-inline-form" @submit.prevent="addSeriesTag">
             <div class="series-tag-input-wrap">
               <input
                 v-model="newTagName"

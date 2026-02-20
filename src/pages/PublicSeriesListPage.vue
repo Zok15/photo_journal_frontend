@@ -32,6 +32,7 @@ const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const previewGridElements = new Map()
+const showMobileFilters = ref(false)
 const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
 const visibleTagRows = ref(TAG_ROWS_INITIAL)
@@ -419,6 +420,10 @@ function pickAuthorSuggestion(author) {
   loadPublicSeries(1)
 }
 
+function toggleMobileFilters() {
+  showMobileFilters.value = !showMobileFilters.value
+}
+
 function applyAuthorSuggestion() {
   if (!authorSuggestions.value.length) {
     if (!authorSearchInput.value.trim() && selectedAuthorId.value) {
@@ -696,7 +701,29 @@ watch([availableTags, visibleTagRows], async () => {
       </header>
 
       <div class="public-layout">
-        <aside class="filters-panel">
+        <div class="filters-mobile-actions">
+          <button
+            type="button"
+            class="filters-toggle-mobile"
+            :aria-expanded="showMobileFilters ? 'true' : 'false'"
+            @click="toggleMobileFilters"
+          >
+            <span class="filters-toggle-icon">⚲</span>
+            {{ showMobileFilters ? t('Скрыть фильтры') : t('Фильтр') }}
+          </button>
+          <button
+            v-if="hasActiveFilters"
+            type="button"
+            class="filters-reset-mobile"
+            :title="t('Сбросить фильтры')"
+            :aria-label="t('Сбросить фильтры')"
+            @click="resetFilters"
+          >
+            ↺
+          </button>
+        </div>
+
+        <aside class="filters-panel" :class="{ 'filters-panel--mobile-open': showMobileFilters }">
           <section class="filter-group">
             <h3>{{ t('Поиск') }}</h3>
             <form class="search-form" @submit.prevent="submitSearch">
@@ -884,7 +911,16 @@ watch([availableTags, visibleTagRows], async () => {
               </div>
 
               <div v-if="(item.tags || []).length" class="tags">
-                <span v-for="tag in item.tags" :key="tag.id" class="tag-chip">#{{ tag.name }}</span>
+                <button
+                  v-for="tag in item.tags"
+                  :key="tag.id"
+                  type="button"
+                  class="tag-chip tag-chip--action"
+                  :class="{ active: selectedTags.includes(tag.name) }"
+                  @click="toggleTag(tag.name)"
+                >
+                  #{{ tag.name }}
+                </button>
               </div>
             </article>
           </section>
@@ -933,6 +969,36 @@ watch([availableTags, visibleTagRows], async () => {
 .public-layout {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.filters-mobile-actions {
+  display: none;
+}
+
+.filters-toggle-mobile {
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  background: #edf1ec;
+  color: #35403a;
+  padding: 7px 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filters-toggle-icon {
+  margin-right: 8px;
+}
+
+.filters-reset-mobile {
+  border: 1px solid #d6dbd4;
+  border-radius: 9px;
+  background: #edf1ec;
+  color: #35403a;
+  width: 38px;
+  height: 34px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .filters-panel {
@@ -1338,6 +1404,16 @@ watch([availableTags, visibleTagRows], async () => {
   font-size: 12px;
 }
 
+.tag-chip--action {
+  cursor: pointer;
+}
+
+.tag-chip--action.active {
+  background: #ddeee4;
+  border-color: #b9d5c4;
+  color: #335e49;
+}
+
 .pager {
   margin-top: 16px;
   display: flex;
@@ -1355,9 +1431,21 @@ watch([availableTags, visibleTagRows], async () => {
     grid-template-columns: 1fr;
   }
 
+  .filters-mobile-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 16px 0;
+  }
+
   .filters-panel {
+    display: none;
     border-right: 0;
     border-bottom: 1px solid #dde0d9;
+  }
+
+  .filters-panel.filters-panel--mobile-open {
+    display: block;
   }
 
   .series-card h2 {
