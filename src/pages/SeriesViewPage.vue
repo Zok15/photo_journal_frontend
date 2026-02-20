@@ -299,13 +299,39 @@ function buildPreviewRows(photos, containerWidth) {
   }
 
   if (!best) {
-    const height = 300
-    return {
-      rows: [{
+    const rows = []
+    let cursor = 0
+
+    while (cursor < items.length) {
+      const remaining = items.length - cursor
+      let count = Math.min(dynamicMaxPerRow, remaining)
+
+      // Avoid leaving a single-tile tail when we can rebalance the current row.
+      if (remaining === count + 1 && count > minPerRow) {
+        count -= 1
+      }
+
+      const chunk = items.slice(cursor, cursor + count)
+      cursor += count
+      const ratioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
+      const rowWidth = containerWidth - previewGap * (chunk.length - 1)
+      const rowHeight = Math.max(
+        minRowHeight,
+        Math.min(maxRowHeight, rowWidth / ratioSum),
+      )
+
+      rows.push({
         gap: previewGap,
-        height,
-        tiles: items.map((item) => ({ photo: item.photo, width: item.ratio * height })),
-      }],
+        height: rowHeight,
+        tiles: chunk.map((item) => ({
+          photo: item.photo,
+          width: item.ratio * rowHeight,
+        })),
+      })
+    }
+
+    return {
+      rows,
     }
   }
 
