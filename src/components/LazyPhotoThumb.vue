@@ -93,12 +93,14 @@ function onError() {
   height: auto;
   object-fit: contain;
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transform: scale(1.01);
+  transition: opacity 0.18s ease-out, transform 0.22s ease-out;
   background: linear-gradient(135deg, #8fb39b 0%, #d6e2cf 45%, #f0e8d8 100%);
 }
 
 .thumb--loaded {
   opacity: 1;
+  transform: none;
 }
 
 .thumb--failed {

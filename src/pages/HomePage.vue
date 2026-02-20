@@ -29,6 +29,8 @@ const heroTextHeight = ref(0)
 const heroTextRef = ref(null)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const heroAspectRatios = ref({})
+const heroImageLoaded = ref({})
+const coverImageLoaded = ref({})
 const heroGridElements = new Set()
 let heroResizeObserver = null
 let heroRefreshTimerId = null
@@ -415,6 +417,38 @@ function setHeroGridRef(element) {
   heroGridElements.clear()
 }
 
+function isHeroImageLoaded(photoId) {
+  return Boolean(heroImageLoaded.value[String(photoId)])
+}
+
+function markHeroImageLoaded(photoId) {
+  const key = String(photoId || '').trim()
+  if (!key || heroImageLoaded.value[key]) {
+    return
+  }
+
+  heroImageLoaded.value = {
+    ...heroImageLoaded.value,
+    [key]: true,
+  }
+}
+
+function isCoverImageLoaded(seriesId) {
+  return Boolean(coverImageLoaded.value[String(seriesId)])
+}
+
+function markCoverImageLoaded(seriesId) {
+  const key = String(seriesId || '').trim()
+  if (!key || coverImageLoaded.value[key]) {
+    return
+  }
+
+  coverImageLoaded.value = {
+    ...coverImageLoaded.value,
+    [key]: true,
+  }
+}
+
 function formatPhotoCount(value) {
   const count = Math.max(0, Number(value || 0))
   return t('{count} фото', { count })
@@ -597,11 +631,20 @@ onBeforeUnmount(() => {
 watch(
   heroPhotos,
   (photos) => {
+    heroImageLoaded.value = {}
     photos.forEach((photo) => {
       ensureHeroRatio(photo)
     })
   },
   { immediate: true },
+)
+
+watch(
+  featuredSeries,
+  () => {
+    coverImageLoaded.value = {}
+  },
+  { deep: false },
 )
 </script>
 
@@ -660,9 +703,18 @@ watch(
               v-for="tile in row.tiles"
               :key="tile.photo.id"
               class="hero-preview-tile"
+              :class="{ 'hero-preview-tile--loaded': isHeroImageLoaded(tile.photo.id) }"
               :style="{ width: `${tile.width}px`, height: `${row.height || 0}px` }"
             >
-              <img class="hero-preview-image" :src="tile.photo.src" :alt="tile.photo.alt" loading="lazy" />
+              <img
+                class="hero-preview-image"
+                :class="{ 'hero-preview-image--loaded': isHeroImageLoaded(tile.photo.id) }"
+                :src="tile.photo.src"
+                :alt="tile.photo.alt"
+                loading="lazy"
+                @load="markHeroImageLoaded(tile.photo.id)"
+                @error="markHeroImageLoaded(tile.photo.id)"
+              />
             </div>
           </div>
         </div>
@@ -714,12 +766,22 @@ watch(
       <div v-else class="showcase-grid">
         <article v-for="item in showcaseSeries" :key="item.id" class="series-card">
           <RouterLink class="series-card-link" :to="seriesPath(item)">
-            <div class="series-cover">
+            <div
+              class="series-cover"
+              :class="{
+                'series-cover--loaded': isCoverImageLoaded(item.id),
+                'series-cover--placeholder': !hasCover(item),
+              }"
+            >
               <img
                 v-if="hasCover(item)"
+                class="series-cover-image"
+                :class="{ 'series-cover-image--loaded': isCoverImageLoaded(item.id) }"
                 :src="coverUrl(item)"
                 :alt="item.title || t('Без названия')"
                 loading="lazy"
+                @load="markCoverImageLoaded(item.id)"
+                @error="markCoverImageLoaded(item.id)"
               />
               <div v-else class="series-cover-placeholder">
                 <span>{{ t('Фото недоступно') }}</span>
@@ -876,9 +938,33 @@ watch(
   flex: 0 0 auto;
   box-sizing: border-box;
   overflow: hidden;
+  border-radius: 8px;
+  background: #e8eee6;
+}
+
+.hero-preview-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      110deg,
+      rgba(198, 207, 199, 0.32) 8%,
+      rgba(231, 236, 231, 0.72) 18%,
+      rgba(198, 207, 199, 0.32) 33%
+    );
+  background-size: 220% 100%;
+  animation: preview-tile-shimmer 1.2s linear infinite;
+  opacity: 0.9;
+  transition: opacity 0.16s ease;
+}
+
+.hero-preview-tile--loaded::before {
+  opacity: 0;
 }
 
 .hero-preview-image {
+  position: relative;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -887,13 +973,61 @@ watch(
   border: 1px solid rgba(125, 134, 128, 0.25);
   background: #eef2ec;
   object-fit: contain;
+  opacity: 0;
+  transform: scale(1.01);
+  transition: opacity 0.18s ease-out, transform 0.22s ease-out;
 }
 
-.series-cover img {
+.hero-preview-image--loaded {
+  opacity: 1;
+  transform: none;
+}
+
+.series-cover {
+  position: relative;
+}
+
+.series-cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(
+      110deg,
+      rgba(198, 207, 199, 0.32) 8%,
+      rgba(231, 236, 231, 0.72) 18%,
+      rgba(198, 207, 199, 0.32) 33%
+    );
+  background-size: 220% 100%;
+  animation: preview-tile-shimmer 1.2s linear infinite;
+  opacity: 0.9;
+  transition: opacity 0.16s ease;
+}
+
+.series-cover--placeholder::before {
+  opacity: 0;
+}
+
+.series-cover--loaded::before {
+  opacity: 0;
+}
+
+.series-cover-image {
+  position: relative;
+  z-index: 2;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  opacity: 0;
+  transform: scale(1.01);
+  transition: opacity 0.18s ease-out, transform 0.22s ease-out;
+}
+
+.series-cover-image--loaded {
+  opacity: 1;
+  transform: none;
 }
 
 .hero-photo-placeholder,
@@ -912,6 +1046,16 @@ watch(
 .hero-photo-placeholder {
   min-height: 280px;
   border-radius: 14px;
+}
+
+@keyframes preview-tile-shimmer {
+  from {
+    background-position-x: 220%;
+  }
+
+  to {
+    background-position-x: -220%;
+  }
 }
 
 .benefits {

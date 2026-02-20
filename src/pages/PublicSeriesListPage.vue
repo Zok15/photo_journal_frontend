@@ -30,6 +30,7 @@ const availableTags = ref([])
 const availableAuthors = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
+const previewImageLoaded = ref({})
 const previewGridElements = new Map()
 const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
@@ -182,6 +183,22 @@ function setPreviewGridRef(seriesId, element) {
   previewGridWidths.value[seriesId] = element.clientWidth || 0
   if (previewResizeObserver) {
     previewResizeObserver.observe(element)
+  }
+}
+
+function isPreviewImageLoaded(photoId) {
+  return Boolean(previewImageLoaded.value[String(photoId)])
+}
+
+function markPreviewImageLoaded(photoId) {
+  const key = String(photoId || '').trim()
+  if (!key || previewImageLoaded.value[key]) {
+    return
+  }
+
+  previewImageLoaded.value = {
+    ...previewImageLoaded.value,
+    [key]: true,
   }
 }
 
@@ -475,6 +492,7 @@ async function loadPublicSeries(targetPage = 1) {
     const { data } = await api.get('/public/series', { params })
 
     series.value = Array.isArray(data?.data) ? data.data : []
+    previewImageLoaded.value = {}
     page.value = Number(data?.current_page || targetPage)
     lastPage.value = Number(data?.last_page || 1)
     availableTags.value = Array.isArray(data?.available_tags)
@@ -839,12 +857,16 @@ watch([availableTags, visibleTagRows], async () => {
                     v-for="tile in row.tiles"
                     :key="tile.photo.id"
                     class="preview-tile"
+                    :class="{ 'preview-tile--loaded': isPreviewImageLoaded(tile.photo.id) }"
                     :style="{ width: `${tile.width}px`, height: `${row.height || 0}px` }"
                   >
                     <img
                       class="preview-tile-image"
+                      :class="{ 'preview-tile-image--loaded': isPreviewImageLoaded(tile.photo.id) }"
                       :src="tile.photo.src"
                       :alt="tile.photo.alt"
+                      @load="markPreviewImageLoaded(tile.photo.id)"
+                      @error="markPreviewImageLoaded(tile.photo.id)"
                     />
                     <div
                       v-if="shouldShowPreviewOverflowOnTile(item, tile)"
@@ -1225,9 +1247,33 @@ watch([availableTags, visibleTagRows], async () => {
   flex: 0 0 auto;
   box-sizing: border-box;
   overflow: hidden;
+  border-radius: 8px;
+  background: #e8eee6;
+}
+
+.preview-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      110deg,
+      rgba(198, 207, 199, 0.32) 8%,
+      rgba(231, 236, 231, 0.72) 18%,
+      rgba(198, 207, 199, 0.32) 33%
+    );
+  background-size: 220% 100%;
+  animation: preview-tile-shimmer 1.2s linear infinite;
+  opacity: 0.9;
+  transition: opacity 0.16s ease;
+}
+
+.preview-tile--loaded::before {
+  opacity: 0;
 }
 
 .preview-tile-image {
+  position: relative;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -1236,6 +1282,24 @@ watch([availableTags, visibleTagRows], async () => {
   border: 1px solid rgba(125, 134, 128, 0.25);
   background: #eef2ec;
   object-fit: contain;
+  opacity: 0;
+  transform: scale(1.01);
+  transition: opacity 0.18s ease-out, transform 0.22s ease-out;
+}
+
+.preview-tile-image--loaded {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes preview-tile-shimmer {
+  from {
+    background-position-x: 220%;
+  }
+
+  to {
+    background-position-x: -220%;
+  }
 }
 
 .preview-more-badge {

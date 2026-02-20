@@ -23,6 +23,7 @@ const calendarMarkedDateKeys = ref([])
 const fetchedTags = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
+const previewImageLoaded = ref({})
 const previewUrlVersion = ref(0)
 const previewGridElements = new Map()
 let previewResizeObserver = null
@@ -811,6 +812,7 @@ watch(dateTo, (value) => {
 async function loadSeriesPreviews(items) {
   if (!items.length) {
     seriesPreviews.value = {}
+    previewImageLoaded.value = {}
     return
   }
 
@@ -833,8 +835,25 @@ async function loadSeriesPreviews(items) {
   })
 
   seriesPreviews.value = Object.fromEntries(entries)
+  previewImageLoaded.value = {}
   const photos = Object.values(seriesPreviews.value).flat()
   await Promise.all(photos.map((photo) => ensurePreviewRatio(photo)))
+}
+
+function isPreviewImageLoaded(photoId) {
+  return Boolean(previewImageLoaded.value[String(photoId)])
+}
+
+function markPreviewImageLoaded(photoId) {
+  const key = String(photoId || '').trim()
+  if (!key || previewImageLoaded.value[key]) {
+    return
+  }
+
+  previewImageLoaded.value = {
+    ...previewImageLoaded.value,
+    [key]: true,
+  }
 }
 
 function onPreviewImageError(event, photo) {
@@ -848,6 +867,8 @@ function onPreviewImageError(event, photo) {
     target.src = fallback
     return
   }
+
+  markPreviewImageLoaded(photo?.id)
 
   const currentSrc = String(target.currentSrc || target.src || '').trim()
   const looksLikeSignedUrl = currentSrc.includes('expires=') && currentSrc.includes('signature=')
@@ -1481,12 +1502,15 @@ function toggleMobileFilters() {
                     v-for="tile in row.tiles"
                     :key="tile.photo.id"
                     class="preview-tile"
+                    :class="{ 'preview-tile--loaded': isPreviewImageLoaded(tile.photo.id) }"
                     :style="{ width: `${tile.width}px`, height: `${row.height || 0}px` }"
                   >
                     <img
                       class="preview-tile-image"
+                      :class="{ 'preview-tile-image--loaded': isPreviewImageLoaded(tile.photo.id) }"
                       :src="tile.photo.src"
                       :alt="tile.photo.alt"
+                      @load="markPreviewImageLoaded(tile.photo.id)"
                       @error="onPreviewImageError($event, tile.photo)"
                     />
                     <div
@@ -2154,9 +2178,33 @@ function toggleMobileFilters() {
   flex: 0 0 auto;
   box-sizing: border-box;
   overflow: hidden;
+  border-radius: 8px;
+  background: #e8eee6;
+}
+
+.preview-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      110deg,
+      rgba(198, 207, 199, 0.32) 8%,
+      rgba(231, 236, 231, 0.72) 18%,
+      rgba(198, 207, 199, 0.32) 33%
+    );
+  background-size: 220% 100%;
+  animation: preview-tile-shimmer 1.2s linear infinite;
+  opacity: 0.9;
+  transition: opacity 0.16s ease;
+}
+
+.preview-tile--loaded::before {
+  opacity: 0;
 }
 
 .preview-tile-image {
+  position: relative;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -2165,6 +2213,24 @@ function toggleMobileFilters() {
   border: 1px solid rgba(125, 134, 128, 0.25);
   background: #eef2ec;
   object-fit: contain;
+  opacity: 0;
+  transform: scale(1.01);
+  transition: opacity 0.18s ease-out, transform 0.22s ease-out;
+}
+
+.preview-tile-image--loaded {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes preview-tile-shimmer {
+  from {
+    background-position-x: 220%;
+  }
+
+  to {
+    background-position-x: -220%;
+  }
 }
 
 .preview-more-badge {
