@@ -140,7 +140,7 @@ async function pollSeriesStatusTick() {
     return
   }
 
-  const loaded = await loadSeries({ silent: true })
+  const loaded = await loadSeries({ silent: true, statusOnly: true })
   if (publicationStatus(item.value) !== 'pending_moderation') {
     return
   }
@@ -1097,6 +1097,8 @@ async function fetchTagSuggestions() {
 
 async function loadSeries(options = {}) {
   const silent = Boolean(options?.silent)
+  const statusOnly = Boolean(options?.statusOnly)
+  const includePhotos = !statusOnly
   let loaded = false
 
   if (!silent) {
@@ -1110,9 +1112,9 @@ async function loadSeries(options = {}) {
     if (isAuthenticated.value) {
       try {
         const response = await api.get(`/series/${route.params.slug}`, {
-          params: {
-            include_photos: 1,
-          },
+          params: includePhotos
+            ? { include_photos: 1 }
+            : undefined,
         })
         data = response.data
       } catch (e) {
@@ -1124,18 +1126,20 @@ async function loadSeries(options = {}) {
 
     if (!data) {
       const response = await api.get(`/public/series/${route.params.slug}`, {
-        params: {
-          include_photos: 1,
-        },
+        params: includePhotos
+          ? { include_photos: 1 }
+          : undefined,
       })
       data = response.data
     }
 
-    photoUrlVersion.value = Date.now()
-    item.value = data.data
+    if (includePhotos && Array.isArray(data?.data?.photos)) {
+      photoUrlVersion.value = Date.now()
+    }
+    item.value = mergeSeriesPayload(data?.data || null)
     loaded = true
     ensureStatusPolling()
-    const canonical = seriesPath(data.data)
+    const canonical = seriesPath(item.value)
     if (canonical !== route.path) {
       router.replace(canonical).catch(() => {})
     }
