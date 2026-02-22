@@ -62,6 +62,10 @@ const previewGridRef = ref(null)
 let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
+let statusPollTimerId = null
+
+const STATUS_POLL_INTERVAL_MS = 5000
+const STATUS_POLL_RETRY_MS = 9000
 
 const selectedPhoto = ref(null)
 const currentUser = ref(getUser())
@@ -113,6 +117,41 @@ function mergeSeriesPayload(next) {
     ...next,
     photos: Array.isArray(next.photos) ? next.photos : (item.value.photos || []),
   }
+}
+
+function stopStatusPolling() {
+  if (statusPollTimerId !== null) {
+    clearTimeout(statusPollTimerId)
+    statusPollTimerId = null
+  }
+}
+
+async function pollSeriesStatusTick() {
+  statusPollTimerId = null
+  if (publicationStatus(item.value) !== 'pending_moderation') {
+    return
+  }
+
+  const loaded = await loadSeries({ silent: true })
+  if (publicationStatus(item.value) !== 'pending_moderation') {
+    return
+  }
+
+  const nextDelay = loaded ? STATUS_POLL_INTERVAL_MS : STATUS_POLL_RETRY_MS
+  statusPollTimerId = window.setTimeout(pollSeriesStatusTick, nextDelay)
+}
+
+function ensureStatusPolling() {
+  if (publicationStatus(item.value) !== 'pending_moderation') {
+    stopStatusPolling()
+    return
+  }
+
+  if (statusPollTimerId !== null) {
+    return
+  }
+
+  statusPollTimerId = window.setTimeout(pollSeriesStatusTick, STATUS_POLL_INTERVAL_MS)
 }
 
 function currentSeriesKey() {
@@ -1044,6 +1083,7 @@ async function fetchTagSuggestions() {
 
 async function loadSeries(options = {}) {
   const silent = Boolean(options?.silent)
+  let loaded = false
 
   if (!silent) {
     loading.value = true
@@ -1079,6 +1119,8 @@ async function loadSeries(options = {}) {
 
     photoUrlVersion.value = Date.now()
     item.value = data.data
+    loaded = true
+    ensureStatusPolling()
     const canonical = seriesPath(data.data)
     if (canonical !== route.path) {
       router.replace(canonical).catch(() => {})
@@ -1096,6 +1138,8 @@ async function loadSeries(options = {}) {
       loading.value = false
     }
   }
+
+  return loaded
 }
 
 async function loadProfileMeta() {
@@ -1142,6 +1186,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   previewResizeObserver?.disconnect()
   previewResizeObserver = null
+  stopStatusPolling()
   if (tagSuggestTimerId !== null) {
     clearTimeout(tagSuggestTimerId)
     tagSuggestTimerId = null
@@ -1149,6 +1194,7 @@ onBeforeUnmount(() => {
 })
 
 watch(() => route.params.slug, () => {
+  stopStatusPolling()
   closePreview()
   loadProfileMeta().finally(() => {
     loadSeries()

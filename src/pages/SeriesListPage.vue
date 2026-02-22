@@ -33,7 +33,10 @@ let refreshPreviewUrlsInFlight = false
 let previewRefreshRetries = 0
 const MAX_PREVIEW_REFRESH_RETRIES = 1
 let skipNextRouteReload = false
+let listStatusPollTimerId = null
 const syncingQueryState = ref(false)
+const LIST_STATUS_POLL_INTERVAL_MS = 5000
+const LIST_STATUS_POLL_RETRY_MS = 9000
 
 const route = useRoute()
 const router = useRouter()
@@ -351,6 +354,45 @@ function formatDate(value) {
 
 function publicationStatus(item) {
   return String(item?.publication_status || '').trim()
+}
+
+function hasPendingModerationItems() {
+  return series.value.some((item) => publicationStatus(item) === 'pending_moderation')
+}
+
+function stopListStatusPolling() {
+  if (listStatusPollTimerId !== null) {
+    clearTimeout(listStatusPollTimerId)
+    listStatusPollTimerId = null
+  }
+}
+
+async function pollListStatusTick() {
+  listStatusPollTimerId = null
+  if (!hasPendingModerationItems()) {
+    return
+  }
+
+  const loaded = await loadSeries(page.value || 1, { silent: true })
+  if (!hasPendingModerationItems()) {
+    return
+  }
+
+  const nextDelay = loaded ? LIST_STATUS_POLL_INTERVAL_MS : LIST_STATUS_POLL_RETRY_MS
+  listStatusPollTimerId = window.setTimeout(pollListStatusTick, nextDelay)
+}
+
+function ensureListStatusPolling() {
+  if (!hasPendingModerationItems()) {
+    stopListStatusPolling()
+    return
+  }
+
+  if (listStatusPollTimerId !== null) {
+    return
+  }
+
+  listStatusPollTimerId = window.setTimeout(pollListStatusTick, LIST_STATUS_POLL_INTERVAL_MS)
 }
 
 function visibilityLabel(item) {
@@ -997,10 +1039,14 @@ async function createSeries() {
   }
 }
 
-async function loadSeries(targetPage = 1) {
+async function loadSeries(targetPage = 1, options = {}) {
+  const silent = Boolean(options?.silent)
   const requestId = ++loadSeriesRequestId
-  loading.value = true
-  error.value = ''
+  let loaded = false
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+  }
 
   try {
     const params = {
@@ -1054,17 +1100,23 @@ async function loadSeries(targetPage = 1) {
     loadedPage.value = page.value
     await loadSeriesPreviews(series.value)
     previewRefreshRetries = 0
+    loaded = true
+    ensureListStatusPolling()
   } catch (e) {
     if (requestId !== loadSeriesRequestId) {
-      return
+      return false
     }
 
-    error.value = e?.response?.data?.message || 'Failed to load series.'
+    if (!silent) {
+      error.value = e?.response?.data?.message || 'Failed to load series.'
+    }
   } finally {
-    if (requestId === loadSeriesRequestId) {
+    if (!silent && requestId === loadSeriesRequestId) {
       loading.value = false
     }
   }
+
+  return loaded
 }
 
 function goToPage(targetPage) {
@@ -1148,6 +1200,7 @@ onBeforeUnmount(() => {
     clearTimeout(searchDebounceTimer)
     searchDebounceTimer = null
   }
+  stopListStatusPolling()
 
   if (tagsLayoutObserver) {
     tagsLayoutObserver.disconnect()
