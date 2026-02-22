@@ -356,6 +356,15 @@ function publicationStatus(item) {
   return String(item?.publication_status || '').trim()
 }
 
+const canViewModerationTags = computed(() => Boolean(currentUser.value?.can_moderate))
+
+function moderationTags(item) {
+  const labels = Array.isArray(item?.moderation_labels) ? item.moderation_labels : []
+  return labels
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+}
+
 function hasPendingModerationItems() {
   return series.value.some((item) => publicationStatus(item) === 'pending_moderation')
 }
@@ -1628,6 +1637,19 @@ function toggleMobileFilters() {
                   #{{ tag.name }}
                 </button>
               </div>
+
+              <div
+                v-if="canViewModerationTags && moderationTags(item).length"
+                class="series-card-tags series-card-tags--moderation"
+              >
+                <span
+                  v-for="label in moderationTags(item)"
+                  :key="`${item.id}-${label}`"
+                  class="tag-chip tag-chip--moderation"
+                >
+                  #{{ label }}
+                </span>
+              </div>
             </article>
           </div>
 
@@ -2276,6 +2298,16 @@ function toggleMobileFilters() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.series-card-tags--moderation {
+  margin-top: 8px;
+}
+
+.tag-chip--moderation {
+  background: rgba(179, 53, 53, 0.1);
+  color: #922525;
+  cursor: default;
 }
 
 .preview-grid {

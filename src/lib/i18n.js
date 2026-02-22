@@ -116,6 +116,7 @@ const en = {
   'Отклонена': 'Rejected',
   'Опубликована админом': 'Published by admin',
   'Серия отправлена на модерацию перед публикацией.': 'Series was sent for moderation before publishing.',
+  'Модерация': 'Moderation',
   'Название обязательно.': 'Title is required.',
   'Не удалось сохранить порядок фото.': 'Failed to save photo order.',
   'Не удалось удалить серию.': 'Failed to delete series.',

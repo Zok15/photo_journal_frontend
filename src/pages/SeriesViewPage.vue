@@ -88,6 +88,7 @@ const canEditSeries = computed(() => {
 
   return ownerId > 0 && currentUserId > 0 && ownerId === currentUserId
 })
+const canViewModerationTags = computed(() => Boolean(currentUser.value?.can_moderate))
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
     .map((tag) => ({
@@ -97,6 +98,12 @@ const seriesTags = computed(() => {
     .filter((tag) => tag.id > 0 && tag.name)
 
   return tags.sort((a, b) => a.name.localeCompare(b.name))
+})
+const moderationTags = computed(() => {
+  const labels = Array.isArray(item.value?.moderation_labels) ? item.value.moderation_labels : []
+  return labels
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
 })
 
 const attachedTagLookup = computed(() => {
@@ -1303,6 +1310,16 @@ watch(previewGridRef, () => {
             </button>
           </form>
         </div>
+        <p v-if="canViewModerationTags && moderationTags.length" class="moderation-tags">
+          <strong>{{ t('Модерация') }}:</strong>
+          <span
+            v-for="label in moderationTags"
+            :key="label"
+            class="series-tag series-tag--moderation"
+          >
+            #{{ label }}
+          </span>
+        </p>
         <p v-if="refreshTagsError" class="error">{{ refreshTagsError }}</p>
         <p v-else-if="refreshTagsInfo" class="hint">{{ refreshTagsInfo }}</p>
         <p v-if="tagEditError" class="error">{{ tagEditError }}</p>
@@ -1584,6 +1601,20 @@ watch(previewGridRef, () => {
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 20px;
+}
+
+.moderation-tags {
+  margin: -6px 0 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.series-tag--moderation {
+  background: rgba(179, 53, 53, 0.1);
+  border-color: rgba(179, 53, 53, 0.28);
+  color: #922525;
 }
 
 .series-tag {
