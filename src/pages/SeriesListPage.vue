@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { getUser, setCurrentUser } from '../lib/session'
-import { seriesPath } from '../lib/seriesPath'
+import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { currentLocale, t } from '../lib/i18n'
@@ -37,6 +37,7 @@ let listStatusPollTimerId = null
 const syncingQueryState = ref(false)
 const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
+const PHOTO_UPLOAD_CHUNK_SIZE = 3
 
 const route = useRoute()
 const router = useRouter()
@@ -1010,6 +1011,10 @@ async function createSeries() {
       return
     }
 
+    const firstChunk = optimizedFiles.slice(0, PHOTO_UPLOAD_CHUNK_SIZE)
+    const restChunks = optimizedFiles.slice(PHOTO_UPLOAD_CHUNK_SIZE)
+    const failedUploads = []
+
     const formData = new FormData()
     formData.append('title', createTitle.value)
 
@@ -1018,13 +1023,30 @@ async function createSeries() {
     }
     formData.append('is_public', createIsPublic.value ? '1' : '0')
 
-    for (const file of optimizedFiles) {
+    for (const file of firstChunk) {
       formData.append('photos[]', file)
     }
 
     const { data } = await api.post('/series', formData)
+    failedUploads.push(...(data?.photos_failed || []))
 
-    createWarnings.value = [...warnings, ...(data.photos_failed || [])]
+    const createdSeriesKey = seriesSlugOrId(data)
+
+    if (createdSeriesKey && restChunks.length) {
+      for (let start = 0; start < restChunks.length; start += PHOTO_UPLOAD_CHUNK_SIZE) {
+        const chunk = restChunks.slice(start, start + PHOTO_UPLOAD_CHUNK_SIZE)
+        const chunkFormData = new FormData()
+
+        for (const file of chunk) {
+          chunkFormData.append('photos[]', file)
+        }
+
+        const response = await api.post(`/series/${createdSeriesKey}/photos`, chunkFormData)
+        failedUploads.push(...(response?.data?.photos_failed || []))
+      }
+    }
+
+    createWarnings.value = [...warnings, ...failedUploads]
     createTitle.value = ''
     createDescription.value = ''
     createIsPublic.value = false

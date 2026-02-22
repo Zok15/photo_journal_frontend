@@ -1,5 +1,9 @@
 export function formatValidationErrorMessage(error, fallback = 'Request failed.') {
-  const fallbackMessage = error?.message || error?.response?.data?.message || fallback
+  const rawMessage = String(error?.message || error?.response?.data?.message || fallback)
+  const normalized = rawMessage.toLowerCase()
+  const fallbackMessage = normalized.includes('post data is too large')
+    ? 'Upload payload is too large for server limits. Try fewer files at once or smaller files.'
+    : rawMessage
   const fields = error?.fields || error?.response?.data?.errors
 
   if (!fields) {

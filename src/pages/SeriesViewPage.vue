@@ -66,6 +66,7 @@ let statusPollTimerId = null
 
 const STATUS_POLL_INTERVAL_MS = 5000
 const STATUS_POLL_RETRY_MS = 9000
+const PHOTO_UPLOAD_CHUNK_SIZE = 3
 
 const selectedPhoto = ref(null)
 const currentUser = ref(getUser())
@@ -784,15 +785,21 @@ async function uploadPhotos() {
       return
     }
 
-    const formData = new FormData()
+    const failedUploads = []
 
-    for (const file of optimizedFiles) {
-      formData.append('photos[]', file)
+    for (let start = 0; start < optimizedFiles.length; start += PHOTO_UPLOAD_CHUNK_SIZE) {
+      const chunk = optimizedFiles.slice(start, start + PHOTO_UPLOAD_CHUNK_SIZE)
+      const formData = new FormData()
+
+      for (const file of chunk) {
+        formData.append('photos[]', file)
+      }
+
+      const { data } = await api.post(`/series/${seriesKey}/photos`, formData)
+      failedUploads.push(...(data?.photos_failed || []))
     }
 
-    const { data } = await api.post(`/series/${seriesKey}/photos`, formData)
-
-    uploadWarnings.value = [...warnings, ...(data.photos_failed || [])]
+    uploadWarnings.value = [...warnings, ...failedUploads]
     uploadFiles.value = []
     showUploadForm.value = false
 
