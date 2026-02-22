@@ -349,6 +349,41 @@ function formatDate(value) {
   }).format(date)
 }
 
+function publicationStatus(item) {
+  return String(item?.publication_status || '').trim()
+}
+
+function visibilityLabel(item) {
+  const status = publicationStatus(item)
+  if (status === 'pending_moderation') {
+    return t('На модерации')
+  }
+  if (status === 'rejected') {
+    return t('Отклонена')
+  }
+  if (status === 'published') {
+    const moderation = String(item?.moderation_status || '').trim()
+    return moderation === 'manual_approved' ? t('Опубликована админом') : t('Публичная')
+  }
+
+  return t('Приватная')
+}
+
+function visibilityClass(item) {
+  const status = publicationStatus(item)
+  if (status === 'pending_moderation') {
+    return 'series-visibility--pending'
+  }
+  if (status === 'rejected') {
+    return 'series-visibility--rejected'
+  }
+  if (status === 'published') {
+    return 'series-visibility--public'
+  }
+
+  return 'series-visibility--private'
+}
+
 function photoUrl(path) {
   return buildStorageUrl(path)
 }
@@ -1484,9 +1519,9 @@ function toggleMobileFilters() {
                 <span>{{ item.photos_count }} {{ t('фото') }}</span>
                 <span
                   class="series-visibility"
-                  :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
+                  :class="visibilityClass(item)"
                 >
-                  {{ item.is_public ? t('Публичная') : t('Приватная') }}
+                  {{ visibilityLabel(item) }}
                 </span>
               </div>
 
@@ -2165,6 +2200,16 @@ function toggleMobileFilters() {
 .series-visibility--private {
   background: rgba(125, 134, 128, 0.16);
   color: #4b574f;
+}
+
+.series-visibility--pending {
+  background: rgba(171, 116, 32, 0.18);
+  color: #8b5a14;
+}
+
+.series-visibility--rejected {
+  background: rgba(179, 53, 53, 0.16);
+  color: #922525;
 }
 
 .series-desc {

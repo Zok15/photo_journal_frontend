@@ -31,6 +31,7 @@ const editTitle = ref('')
 const editDescription = ref('')
 const editIsPublic = ref(false)
 const editError = ref('')
+const editInfo = ref('')
 const savingSeries = ref(false)
 const showDeleteSeriesModal = ref(false)
 const deletingSeries = ref(false)
@@ -415,19 +416,56 @@ function formatValidationError(err) {
   return formatValidationErrorMessage(err, 'Request failed.')
 }
 
+function publicationStatus(series) {
+  return String(series?.publication_status || '').trim()
+}
+
+function visibilityLabel(series) {
+  const status = publicationStatus(series)
+  if (status === 'pending_moderation') {
+    return t('На модерации')
+  }
+  if (status === 'rejected') {
+    return t('Отклонена')
+  }
+  if (status === 'published') {
+    const moderation = String(series?.moderation_status || '').trim()
+    return moderation === 'manual_approved' ? t('Опубликована админом') : t('Публичная')
+  }
+
+  return t('Приватная')
+}
+
+function visibilityClass(series) {
+  const status = publicationStatus(series)
+  if (status === 'pending_moderation') {
+    return 'series-visibility--pending'
+  }
+  if (status === 'rejected') {
+    return 'series-visibility--rejected'
+  }
+  if (status === 'published') {
+    return 'series-visibility--public'
+  }
+
+  return 'series-visibility--private'
+}
+
 function openEditSeries() {
   if (!item.value || !canEditSeries.value) return
 
   isEditingSeries.value = true
   editError.value = ''
+  editInfo.value = ''
   editTitle.value = item.value.title || ''
   editDescription.value = item.value.description || ''
-  editIsPublic.value = Boolean(item.value.is_public)
+  editIsPublic.value = Boolean(item.value.is_public) || publicationStatus(item.value) === 'pending_moderation'
 }
 
 function cancelEditSeries() {
   isEditingSeries.value = false
   editError.value = ''
+  editInfo.value = ''
 }
 
 async function saveSeries() {
@@ -441,6 +479,7 @@ async function saveSeries() {
 
   savingSeries.value = true
   editError.value = ''
+  editInfo.value = ''
 
   try {
     const { data } = await api.patch(`/series/${seriesKey}`, {
@@ -454,6 +493,9 @@ async function saveSeries() {
       ...item.value,
       ...updated,
       photos: item.value?.photos || [],
+    }
+    if (publicationStatus(updated) === 'pending_moderation') {
+      editInfo.value = t('Серия отправлена на модерацию перед публикацией.')
     }
     isEditingSeries.value = false
   } catch (e) {
@@ -1142,9 +1184,9 @@ watch(previewGridRef, () => {
               {{ formatDate(item.created_at) }} · {{ item.photos_count }} {{ t('фото') }}
               <span
                 class="series-visibility"
-                :class="item.is_public ? 'series-visibility--public' : 'series-visibility--private'"
+                :class="visibilityClass(item)"
               >
-                {{ item.is_public ? t('Публичная') : t('Приватная') }}
+                {{ visibilityLabel(item) }}
               </span>
             </p>
           </div>
@@ -1165,6 +1207,7 @@ watch(previewGridRef, () => {
         </header>
 
         <p v-if="item.description" class="series-description">{{ item.description }}</p>
+        <p v-if="item.moderation_reason && publicationStatus(item) === 'rejected'" class="error">{{ item.moderation_reason }}</p>
         <div class="series-tags">
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}
@@ -1265,6 +1308,7 @@ watch(previewGridRef, () => {
             </label>
 
             <p v-if="editError" class="error">{{ editError }}</p>
+            <p v-else-if="editInfo" class="hint">{{ editInfo }}</p>
 
             <div class="inline-actions">
               <button type="submit" class="primary-btn" :disabled="savingSeries">
@@ -1470,6 +1514,16 @@ watch(previewGridRef, () => {
 .series-visibility--private {
   background: rgba(125, 134, 128, 0.16);
   color: #4b574f;
+}
+
+.series-visibility--pending {
+  background: rgba(171, 116, 32, 0.18);
+  color: #8b5a14;
+}
+
+.series-visibility--rejected {
+  background: rgba(179, 53, 53, 0.16);
+  color: #922525;
 }
 
 .series-description {
