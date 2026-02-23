@@ -16,6 +16,19 @@ const journalMenuLabel = computed(() => {
 })
 const userMenuOpen = ref(false)
 const userMenuRef = ref(null)
+const verificationResending = ref(false)
+const verificationInfo = ref('')
+const verificationError = ref('')
+
+const emailVerificationRequired = computed(() => {
+  if (!signedIn.value) {
+    return false
+  }
+
+  return !currentUser.value?.email_verified_at
+})
+
+const verificationEmail = computed(() => String(currentUser.value?.email || '').trim())
 
 async function changeLocale(nextLocale) {
   if (nextLocale === currentLocale.value) {
@@ -52,6 +65,43 @@ async function logout() {
   userMenuOpen.value = false
 }
 
+async function ensureCurrentUser() {
+  if (!signedIn.value || currentUser.value?.id) {
+    return
+  }
+
+  try {
+    const { data } = await api.get('/profile')
+    const user = data?.data || null
+    if (user) {
+      setCurrentUser(user)
+    }
+  } catch (_) {
+    // Keep app usable even if profile request fails.
+  }
+}
+
+async function resendVerificationEmail() {
+  if (!emailVerificationRequired.value || verificationResending.value) {
+    return
+  }
+
+  verificationResending.value = true
+  verificationInfo.value = ''
+  verificationError.value = ''
+
+  try {
+    const { data } = await api.post('/auth/email/verification-notification', {
+      locale: currentLocale.value,
+    })
+    verificationInfo.value = data?.message || t('Письмо для подтверждения отправлено повторно.')
+  } catch (e) {
+    verificationError.value = e?.response?.data?.message || t('Не удалось отправить письмо подтверждения.')
+  } finally {
+    verificationResending.value = false
+  }
+}
+
 function toggleUserMenu() {
   userMenuOpen.value = !userMenuOpen.value
 }
@@ -85,6 +135,7 @@ function onKeyDown(event) {
 onMounted(() => {
   window.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('keydown', onKeyDown)
+  ensureCurrentUser()
 })
 
 onBeforeUnmount(() => {
@@ -98,6 +149,16 @@ watch(
     applySeoForRoute(route, { locale: currentLocale.value, t })
   },
   { immediate: true },
+)
+
+watch(
+  () => emailVerificationRequired.value,
+  (required) => {
+    if (!required) {
+      verificationInfo.value = ''
+      verificationError.value = ''
+    }
+  },
 )
 </script>
 
@@ -146,6 +207,20 @@ watch(
         </div>
       </nav>
     </header>
+
+    <section v-if="emailVerificationRequired" class="verification-banner" role="status" aria-live="polite">
+      <div class="verification-banner__text">
+        <strong>{{ t('Подтвердите email, чтобы активировать все возможности аккаунта.') }}</strong>
+        <span v-if="verificationEmail">{{ t('Мы отправили письмо на {email}.', { email: verificationEmail }) }}</span>
+      </div>
+      <div class="verification-banner__actions">
+        <button type="button" class="verification-btn" :disabled="verificationResending" @click="resendVerificationEmail">
+          {{ verificationResending ? t('Отправляем...') : t('Отправить письмо повторно') }}
+        </button>
+      </div>
+      <p v-if="verificationInfo" class="verification-banner__info">{{ verificationInfo }}</p>
+      <p v-if="verificationError" class="verification-banner__error">{{ verificationError }}</p>
+    </section>
 
     <main class="app-content">
       <RouterView />
@@ -298,6 +373,58 @@ watch(
   border-color: #bc7a7a;
 }
 
+.verification-banner {
+  border-bottom: 1px solid #e2d9bf;
+  background: #fff8e5;
+  color: #54420d;
+  padding: 10px 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.verification-banner__text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.verification-banner__text span {
+  color: #6f5a1f;
+}
+
+.verification-banner__actions {
+  display: flex;
+}
+
+.verification-btn {
+  border: 1px solid #d5bf79;
+  background: #fff4cf;
+  color: #5a450f;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.verification-btn:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.verification-banner__info,
+.verification-banner__error {
+  margin: 0;
+}
+
+.verification-banner__info {
+  color: #2f7a43;
+}
+
+.verification-banner__error {
+  color: #a12222;
+}
+
 @media (max-width: 700px) {
   .app-header {
     padding: 10px 12px;
@@ -309,6 +436,10 @@ watch(
   .app-nav {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .verification-banner {
+    padding: 10px 12px;
   }
 }
 
