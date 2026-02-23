@@ -46,6 +46,10 @@ const touchPanStartX = ref(0)
 const touchPanStartY = ref(0)
 const pinchStartDistance = ref(0)
 const pinchStartZoom = ref(100)
+const pinchRafId = ref(0)
+const pinchPendingZoom = ref(0)
+const pinchPendingFocusX = ref(0)
+const pinchPendingFocusY = ref(0)
 
 const previewImageStyle = computed(() => {
   if (!previewNaturalWidth.value || !previewNaturalHeight.value) {
@@ -325,7 +329,7 @@ function onPreviewTouchMove(event) {
     if (nextZoom !== zoomPercent.value) {
       const focusClientX = (firstTouch.clientX + secondTouch.clientX) / 2
       const focusClientY = (firstTouch.clientY + secondTouch.clientY) / 2
-      applyZoom(nextZoom, focusClientX, focusClientY)
+      schedulePinchZoom(nextZoom, focusClientX, focusClientY)
     }
     return
   }
@@ -344,6 +348,7 @@ function onPreviewTouchMove(event) {
 function onPreviewTouchEnd(event) {
   if (event.touches.length < 2) {
     pinchStartDistance.value = 0
+    cancelPendingPinchZoom()
   }
 
   if (event.touches.length === 1 && zoomPercent.value > 100) {
@@ -364,6 +369,34 @@ function onPreviewTouchEnd(event) {
   }
 }
 
+function schedulePinchZoom(nextZoom, focusClientX, focusClientY) {
+  pinchPendingZoom.value = nextZoom
+  pinchPendingFocusX.value = focusClientX
+  pinchPendingFocusY.value = focusClientY
+
+  if (pinchRafId.value) {
+    return
+  }
+
+  pinchRafId.value = window.requestAnimationFrame(() => {
+    pinchRafId.value = 0
+    applyZoom(
+      pinchPendingZoom.value,
+      pinchPendingFocusX.value,
+      pinchPendingFocusY.value,
+    )
+  })
+}
+
+function cancelPendingPinchZoom() {
+  if (!pinchRafId.value) {
+    return
+  }
+
+  window.cancelAnimationFrame(pinchRafId.value)
+  pinchRafId.value = 0
+}
+
 onMounted(() => {
   window.addEventListener('resize', syncViewport)
   window.addEventListener('keydown', onPreviewKeyDown)
@@ -374,6 +407,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onPreviewKeyDown)
   window.removeEventListener('mousemove', onPreviewMouseMove)
   window.removeEventListener('mouseup', stopPreviewDrag)
+  cancelPendingPinchZoom()
 })
 </script>
 
