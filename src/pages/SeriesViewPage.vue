@@ -1920,6 +1920,21 @@ watch(previewGridRef, () => {
     margin-top: 6px;
   }
 
+  .preview-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+  }
+
+  .preview-card {
+    width: 100% !important;
+  }
+
+  .preview-card-image-wrap {
+    height: auto !important;
+    aspect-ratio: 4 / 3;
+  }
+
   .preview-card-meta {
     padding: 9px;
     gap: 4px;
