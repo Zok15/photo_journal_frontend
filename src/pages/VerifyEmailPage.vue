@@ -10,6 +10,7 @@ const route = useRoute()
 const loading = ref(true)
 const success = ref(false)
 const message = ref('')
+const VERIFY_TIMEOUT_MS = 15000
 
 const primaryLink = computed(() => (getToken() ? '/series' : '/login'))
 const primaryLabel = computed(() => (getToken() ? t('Перейти в мой журнал') : t('Перейти ко входу')))
@@ -28,14 +29,23 @@ async function verify() {
   }
 
   try {
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS)
+
     const { data } = await api.get(`/auth/verify-email/${encodeURIComponent(id)}/${encodeURIComponent(hash)}`, {
       params: { expires, signature },
+      signal: controller.signal,
     })
+
+    window.clearTimeout(timeoutId)
     success.value = true
     message.value = data?.message || t('Email подтверждён.')
   } catch (e) {
     success.value = false
-    message.value = e?.response?.data?.message || t('Не удалось подтвердить email.')
+    const isTimeout = e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError'
+    message.value = isTimeout
+      ? t('Не удалось подтвердить email: таймаут запроса.')
+      : (e?.response?.data?.message || t('Не удалось подтвердить email.'))
   } finally {
     loading.value = false
   }
@@ -55,10 +65,10 @@ onMounted(() => {
       </div>
 
       <h1>{{ t('Подтверждение email') }}</h1>
-      <p class="lead">{{ t('Проверяем ссылку подтверждения...') }}</p>
 
-      <p v-if="loading" class="state-text">{{ t('Проверяем...') }}</p>
-      <p v-else :class="success ? 'success' : 'error'">{{ message }}</p>
+      <p :class="loading ? 'state-text' : (success ? 'success' : 'error')">
+        {{ loading ? t('Подтверждаем ссылку...') : message }}
+      </p>
 
       <div class="actions">
         <RouterLink class="primary-btn link-btn" :to="primaryLink">{{ primaryLabel }}</RouterLink>
@@ -76,7 +86,8 @@ onMounted(() => {
     radial-gradient(860px 260px at 100% 15%, rgba(218, 206, 188, 0.28), transparent 70%),
     var(--bg);
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-content: start;
   padding: 24px;
 }
 
@@ -89,7 +100,8 @@ onMounted(() => {
   padding: 22px;
   color: var(--text);
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  margin-top: 32px;
 }
 
 .verify-brand {
@@ -114,11 +126,6 @@ onMounted(() => {
   margin: 8px 0 0;
   font-size: 34px;
   letter-spacing: -0.03em;
-}
-
-.lead {
-  margin: 0;
-  color: #4b574f;
 }
 
 .state-text,
