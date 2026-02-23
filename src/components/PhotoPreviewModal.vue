@@ -41,6 +41,11 @@ const dragStartX = ref(0)
 const dragStartY = ref(0)
 const dragScrollLeft = ref(0)
 const dragScrollTop = ref(0)
+const isTouchPanning = ref(false)
+const touchPanStartX = ref(0)
+const touchPanStartY = ref(0)
+const pinchStartDistance = ref(0)
+const pinchStartZoom = ref(100)
 
 const previewImageStyle = computed(() => {
   if (!previewNaturalWidth.value || !previewNaturalHeight.value) {
@@ -90,7 +95,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
-async function applyZoom(nextZoom) {
+async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
   const boundedZoom = clamp(nextZoom, 50, 300)
   if (boundedZoom === zoomPercent.value) {
     return
@@ -104,8 +109,14 @@ async function applyZoom(nextZoom) {
     return
   }
 
-  const centerContentX = stage.scrollLeft + stage.clientWidth / 2
-  const centerContentY = stage.scrollTop + stage.clientHeight / 2
+  const stageRect = stage.getBoundingClientRect()
+  const hasFocusPoint = Number.isFinite(focusClientX) && Number.isFinite(focusClientY)
+  const centerContentX = hasFocusPoint
+    ? stage.scrollLeft + (focusClientX - stageRect.left)
+    : stage.scrollLeft + stage.clientWidth / 2
+  const centerContentY = hasFocusPoint
+    ? stage.scrollTop + (focusClientY - stageRect.top)
+    : stage.scrollTop + stage.clientHeight / 2
   const imageLeft = image.offsetLeft
   const imageTop = image.offsetTop
   const imageWidth = image.clientWidth
@@ -140,6 +151,46 @@ function zoomIn() {
 
 function zoomOut() {
   applyZoom(zoomPercent.value - 10)
+}
+
+function onPreviewWheel(event) {
+  if (!(event.ctrlKey || event.metaKey)) {
+    return
+  }
+
+  event.preventDefault()
+  const step = event.deltaY < 0 ? 12 : -12
+  applyZoom(zoomPercent.value + step, event.clientX, event.clientY)
+}
+
+function onPreviewDoubleClick(event) {
+  event.preventDefault()
+  const targetZoom = zoomPercent.value > 100 ? 100 : 200
+  applyZoom(targetZoom, event.clientX, event.clientY)
+}
+
+function onPreviewKeyDown(event) {
+  if (!props.open) {
+    return
+  }
+
+  const key = String(event.key || '')
+  if (key === '+' || key === '=') {
+    event.preventDefault()
+    applyZoom(zoomPercent.value + 10)
+    return
+  }
+
+  if (key === '-' || key === '_') {
+    event.preventDefault()
+    applyZoom(zoomPercent.value - 10)
+    return
+  }
+
+  if (key === '0') {
+    event.preventDefault()
+    applyZoom(100)
+  }
 }
 
 function onPreviewImageLoad(event) {
@@ -219,12 +270,109 @@ function stopPreviewDrag() {
   isDraggingPreview.value = false
 }
 
+function distanceBetweenTouches(firstTouch, secondTouch) {
+  const dx = secondTouch.clientX - firstTouch.clientX
+  const dy = secondTouch.clientY - firstTouch.clientY
+  return Math.hypot(dx, dy)
+}
+
+function onPreviewTouchStart(event) {
+  const stage = previewStageRef.value
+  if (!stage) {
+    return
+  }
+
+  if (event.touches.length === 2) {
+    event.preventDefault()
+    const firstTouch = event.touches[0]
+    const secondTouch = event.touches[1]
+    pinchStartDistance.value = distanceBetweenTouches(firstTouch, secondTouch)
+    pinchStartZoom.value = zoomPercent.value
+    isTouchPanning.value = false
+    return
+  }
+
+  if (event.touches.length === 1 && zoomPercent.value > 100) {
+    const touch = event.touches[0]
+    isTouchPanning.value = true
+    touchPanStartX.value = touch.clientX
+    touchPanStartY.value = touch.clientY
+    dragScrollLeft.value = stage.scrollLeft
+    dragScrollTop.value = stage.scrollTop
+    return
+  }
+
+  isTouchPanning.value = false
+}
+
+function onPreviewTouchMove(event) {
+  const stage = previewStageRef.value
+  if (!stage) {
+    return
+  }
+
+  if (event.touches.length === 2 && pinchStartDistance.value > 0) {
+    event.preventDefault()
+    const firstTouch = event.touches[0]
+    const secondTouch = event.touches[1]
+    const currentDistance = distanceBetweenTouches(firstTouch, secondTouch)
+    if (currentDistance <= 0) {
+      return
+    }
+
+    const scale = currentDistance / pinchStartDistance.value
+    const nextZoom = clamp(Math.round(pinchStartZoom.value * scale), 50, 300)
+    if (nextZoom !== zoomPercent.value) {
+      zoomPercent.value = nextZoom
+      nextTick(() => {
+        refreshZoomOverflow()
+      })
+    }
+    return
+  }
+
+  if (event.touches.length === 1 && isTouchPanning.value && zoomPercent.value > 100) {
+    event.preventDefault()
+    const touch = event.touches[0]
+    const dx = touch.clientX - touchPanStartX.value
+    const dy = touch.clientY - touchPanStartY.value
+
+    stage.scrollLeft = dragScrollLeft.value - dx
+    stage.scrollTop = dragScrollTop.value - dy
+  }
+}
+
+function onPreviewTouchEnd(event) {
+  if (event.touches.length < 2) {
+    pinchStartDistance.value = 0
+  }
+
+  if (event.touches.length === 1 && zoomPercent.value > 100) {
+    const stage = previewStageRef.value
+    const touch = event.touches[0]
+    if (stage && touch) {
+      isTouchPanning.value = true
+      touchPanStartX.value = touch.clientX
+      touchPanStartY.value = touch.clientY
+      dragScrollLeft.value = stage.scrollLeft
+      dragScrollTop.value = stage.scrollTop
+      return
+    }
+  }
+
+  if (event.touches.length === 0) {
+    isTouchPanning.value = false
+  }
+}
+
 onMounted(() => {
   window.addEventListener('resize', syncViewport)
+  window.addEventListener('keydown', onPreviewKeyDown)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncViewport)
+  window.removeEventListener('keydown', onPreviewKeyDown)
   window.removeEventListener('mousemove', onPreviewMouseMove)
   window.removeEventListener('mouseup', stopPreviewDrag)
 })
@@ -266,6 +414,12 @@ onBeforeUnmount(() => {
         class="preview-stage"
         :class="{ 'preview-stage--dragging': isDraggingPreview }"
         @mousedown="onPreviewMouseDown"
+        @dblclick="onPreviewDoubleClick"
+        @wheel="onPreviewWheel"
+        @touchstart="onPreviewTouchStart"
+        @touchmove="onPreviewTouchMove"
+        @touchend="onPreviewTouchEnd"
+        @touchcancel="onPreviewTouchEnd"
       >
         <div
           class="preview-inner"
@@ -391,6 +545,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   cursor: grab;
   user-select: none;
+  touch-action: none;
 }
 
 .preview-stage--dragging {
