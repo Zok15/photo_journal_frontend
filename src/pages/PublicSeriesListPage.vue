@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
-import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
+import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
 import { buildPreviewRowsWithClampedHeights } from '../lib/previewRows'
 import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
@@ -202,18 +202,6 @@ function markPreviewImageLoaded(photoId) {
   previewImageLoaded.value = {
     ...previewImageLoaded.value,
     [key]: true,
-  }
-}
-
-async function ensurePreviewRatio(photo) {
-  if (!photo?.id || !photo?.src || previewAspectRatios.value[photo.id]) {
-    return
-  }
-
-  const ratio = await resolveImageAspectRatio(photo.src)
-  previewAspectRatios.value = {
-    ...previewAspectRatios.value,
-    [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
   }
 }
 
@@ -524,9 +512,12 @@ onMounted(() => {
       }
 
       const [seriesId] = matched
-      previewGridWidths.value = {
-        ...previewGridWidths.value,
-        [seriesId]: entry.contentRect.width,
+      const nextWidth = entry.contentRect.width
+      if (previewGridWidths.value[seriesId] !== nextWidth) {
+        previewGridWidths.value = {
+          ...previewGridWidths.value,
+          [seriesId]: nextWidth,
+        }
       }
     })
   })
@@ -560,12 +551,19 @@ onBeforeUnmount(() => {
 
 watch(
   seriesPreviews,
-  (map) => {
-    Object.values(map).forEach((photos) => {
-      photos.forEach((photo) => {
-        ensurePreviewRatio(photo)
-      })
-    })
+  async (map) => {
+    const photos = Object.values(map).flat()
+    const ratioPatch = await resolveMissingAspectRatios(
+      photos,
+      previewAspectRatios.value,
+      (photo) => photo?.src,
+    )
+    if (Object.keys(ratioPatch).length) {
+      previewAspectRatios.value = {
+        ...previewAspectRatios.value,
+        ...ratioPatch,
+      }
+    }
   },
   { immediate: true },
 )

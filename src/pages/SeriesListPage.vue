@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
-import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
+import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
 import { buildPreviewRowsWithClampedHeights } from '../lib/previewRows'
 import { getUser, setCurrentUser } from '../lib/session'
 import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
@@ -527,21 +527,12 @@ function setPreviewGridRef(seriesId, element) {
   }
 
   previewGridElements.set(seriesId, element)
-  previewGridWidths.value[seriesId] = element.clientWidth || 0
+  const nextWidth = element.clientWidth || 0
+  if (previewGridWidths.value[seriesId] !== nextWidth) {
+    previewGridWidths.value[seriesId] = nextWidth
+  }
   if (previewResizeObserver) {
     previewResizeObserver.observe(element)
-  }
-}
-
-async function ensurePreviewRatio(photo) {
-  if (!photo?.id || !photo?.src || previewAspectRatios.value[photo.id]) {
-    return
-  }
-
-  const ratio = await resolveImageAspectRatio(photo.src)
-  previewAspectRatios.value = {
-    ...previewAspectRatios.value,
-    [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
   }
 }
 
@@ -845,7 +836,17 @@ async function loadSeriesPreviews(items) {
   seriesPreviews.value = Object.fromEntries(entries)
   previewImageLoaded.value = {}
   const photos = Object.values(seriesPreviews.value).flat()
-  await Promise.all(photos.map((photo) => ensurePreviewRatio(photo)))
+  const ratioPatch = await resolveMissingAspectRatios(
+    photos,
+    previewAspectRatios.value,
+    (photo) => photo?.src,
+  )
+  if (Object.keys(ratioPatch).length) {
+    previewAspectRatios.value = {
+      ...previewAspectRatios.value,
+      ...ratioPatch,
+    }
+  }
 }
 
 function buildSeriesPreviewSignature(items) {

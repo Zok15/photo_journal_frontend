@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
-import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
+import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { buildPreviewRowsWithDynamicGrid } from '../lib/previewRows'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
@@ -64,6 +64,7 @@ const previewGridRef = ref(null)
 let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
+let previewRatioRequestId = 0
 let statusPollTimerId = null
 let statusPollInFlight = false
 
@@ -230,20 +231,6 @@ function resolvedPhotoFallbackUrl(photo) {
   }
 
   return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
-}
-
-async function ensurePreviewRatio(photo) {
-  const photoId = Number(photo?.id || 0)
-  const src = resolvedPhotoUrl(photo)
-  if (!photoId || !src || previewAspectRatios.value[photoId]) {
-    return
-  }
-
-  const ratio = await resolveImageAspectRatio(src)
-  previewAspectRatios.value = {
-    ...previewAspectRatios.value,
-    [photoId]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
-  }
 }
 
 const previewRows = computed(() => {
@@ -1102,11 +1089,19 @@ watch(() => route.params.slug, () => {
   })
 })
 
-watch(photoList, (photos) => {
+watch(photoList, async (photos) => {
+  const requestId = ++previewRatioRequestId
   previewAspectRatios.value = {}
-  photos.forEach((photo) => {
-    ensurePreviewRatio(photo)
-  })
+  const ratioPatch = await resolveMissingAspectRatios(
+    photos,
+    {},
+    (photo) => resolvedPhotoUrl(photo),
+  )
+  if (requestId !== previewRatioRequestId) {
+    return
+  }
+
+  previewAspectRatios.value = ratioPatch
   syncPreviewGridObserver()
 }, { immediate: true })
 
