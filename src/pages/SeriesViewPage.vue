@@ -257,7 +257,7 @@ const previewRows = computed(() => {
       gap: 10,
       minPerRow: 2,
       maxPerRow: 5,
-      minTileWidthMobile: 150,
+      minTileWidthMobile: 180,
       minTileWidthDesktop: 180,
       mobileBreakPoint: 760,
       targetRowHeight: 300,
@@ -1795,10 +1795,11 @@ watch(previewGridRef, () => {
 
 .thumb-actions {
   display: inline-flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   flex: 0 0 auto;
   justify-self: end;
+  max-width: 100%;
 }
 
 .icon-ghost-btn {
@@ -1924,13 +1925,20 @@ watch(previewGridRef, () => {
     gap: 4px;
   }
 
+  .preview-card-meta span {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
   .thumb-actions {
     justify-self: start;
+    gap: 5px;
   }
 
   .icon-ghost-btn {
-    min-width: 28px;
-    height: 26px;
+    min-width: 26px;
+    height: 24px;
+    font-size: 13px;
   }
 }
 </style>
