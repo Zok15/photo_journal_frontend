@@ -96,11 +96,11 @@ export function shouldCacheRequest(method, url, params = null) {
   }
 
   const path = normalizePath(url)
-  if (!/^\/series(?:\/\d+)?$/.test(path)) {
+  if (!/^\/series(?:\/[^/]+)?$/.test(path)) {
     return false
   }
 
-  const isSeriesShow = /^\/series\/\d+$/.test(path)
+  const isSeriesShow = /^\/series\/[^/]+$/.test(path)
   if (!isSeriesShow) {
     // Series list changes frequently (reorder, tag updates, uploads/deletes).
     // Avoid stale list state in current tab: always fetch list from backend.
