@@ -29,6 +29,10 @@ const emailVerificationRequired = computed(() => {
     return false
   }
 
+  if (!currentUser.value) {
+    return false
+  }
+
   return !currentUser.value?.email_verified_at
 })
 
