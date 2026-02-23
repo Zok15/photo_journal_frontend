@@ -1428,6 +1428,7 @@ watch(previewGridRef, () => {
                   :src="resolvedPhotoUrl(tile.photo)"
                   :fallback-src="resolvedPhotoFallbackUrl(tile.photo)"
                   :alt="tile.photo.original_name || 'photo'"
+                  :eager="true"
                 />
               </div>
               <div class="preview-card-meta">

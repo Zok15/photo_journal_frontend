@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { t } from '../lib/i18n'
 
 const props = defineProps({
@@ -15,21 +15,53 @@ const props = defineProps({
     type: String,
     default: 'photo',
   },
+  eager: {
+    type: Boolean,
+    default: false,
+  },
 })
 
+const imageRef = ref(null)
 const currentSrc = ref('')
 const loaded = ref(false)
 const failed = ref(false)
 
 watch(
   () => [props.src, props.fallbackSrc],
-  () => {
+  async () => {
     currentSrc.value = props.src || props.fallbackSrc || ''
     loaded.value = false
     failed.value = false
+    await nextTick()
+    syncLoadedStateFromDom()
   },
   { immediate: true },
 )
+
+onMounted(() => {
+  syncLoadedStateFromDom()
+})
+
+function syncLoadedStateFromDom() {
+  const image = imageRef.value
+  if (!(image instanceof HTMLImageElement)) {
+    return
+  }
+
+  if (!image.currentSrc || !image.complete) {
+    return
+  }
+
+  if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+    loaded.value = true
+    failed.value = false
+    return
+  }
+
+  // Completed with zero dimensions typically means failed decode/load.
+  loaded.value = true
+  failed.value = true
+}
 
 function onLoad() {
   loaded.value = true
@@ -54,11 +86,13 @@ function onError() {
     <div v-if="!loaded" class="thumb-skeleton"></div>
     <div v-if="loaded && failed" class="thumb-fallback">{{ t('Фото недоступно') }}</div>
     <img
+      ref="imageRef"
       class="thumb"
       :class="{ 'thumb--loaded': loaded, 'thumb--failed': failed, 'thumb--hidden': failed }"
       :src="currentSrc"
       :alt="alt"
-      loading="lazy"
+      :loading="eager ? 'eager' : 'lazy'"
+      :fetchpriority="eager ? 'high' : 'auto'"
       decoding="async"
       @load="onLoad"
       @error="onError"
