@@ -33,6 +33,8 @@ const viewportWidth = ref(window.innerWidth)
 const viewportHeight = ref(window.innerHeight)
 const previewStageRef = ref(null)
 const previewImageRef = ref(null)
+const previewStageWidth = ref(0)
+const previewStageHeight = ref(0)
 const isDraggingPreview = ref(false)
 const dragStartX = ref(0)
 const dragStartY = ref(0)
@@ -54,8 +56,10 @@ const previewImageStyle = computed(() => {
     return {}
   }
 
-  const maxWidth = Math.min(viewportWidth.value * 0.88, 1400)
-  const maxHeight = Math.max(200, viewportHeight.value - 72)
+  const stageWidth = previewStageWidth.value > 0 ? previewStageWidth.value : viewportWidth.value * 0.88
+  const stageHeight = previewStageHeight.value > 0 ? previewStageHeight.value : (viewportHeight.value - 72)
+  const maxWidth = Math.min(stageWidth, 1400)
+  const maxHeight = Math.max(140, stageHeight)
   const fitScale = Math.min(
     maxWidth / previewNaturalWidth.value,
     maxHeight / previewNaturalHeight.value,
@@ -86,6 +90,14 @@ watch(
     previewNaturalWidth.value = 0
     previewNaturalHeight.value = 0
     isDraggingPreview.value = false
+    nextTick(() => {
+      syncStageMetrics()
+      const stage = previewStageRef.value
+      if (stage) {
+        stage.scrollLeft = 0
+        stage.scrollTop = 0
+      }
+    })
   },
   { immediate: true },
 )
@@ -201,11 +213,25 @@ function onPreviewKeyDown(event) {
 function onPreviewImageLoad(event) {
   previewNaturalWidth.value = event.target?.naturalWidth || 0
   previewNaturalHeight.value = event.target?.naturalHeight || 0
+  nextTick(() => {
+    syncStageMetrics()
+  })
 }
 
 function syncViewport() {
   viewportWidth.value = window.innerWidth
   viewportHeight.value = window.innerHeight
+  syncStageMetrics()
+}
+
+function syncStageMetrics() {
+  const stage = previewStageRef.value
+  if (!stage) {
+    return
+  }
+
+  previewStageWidth.value = stage.clientWidth
+  previewStageHeight.value = stage.clientHeight
 }
 
 function onPreviewMouseDown(event) {
@@ -377,6 +403,9 @@ function cancelPendingPinchZoom() {
 onMounted(() => {
   window.addEventListener('resize', syncViewport)
   window.addEventListener('keydown', onPreviewKeyDown)
+  nextTick(() => {
+    syncStageMetrics()
+  })
 })
 
 onBeforeUnmount(() => {
