@@ -33,8 +33,8 @@ const viewportWidth = ref(window.innerWidth)
 const viewportHeight = ref(window.innerHeight)
 const previewStageRef = ref(null)
 const previewImageRef = ref(null)
-const previewStageWidth = ref(0)
-const previewStageHeight = ref(0)
+const previewViewportWidth = ref(0)
+const previewViewportHeight = ref(0)
 const isDraggingPreview = ref(false)
 const dragStartX = ref(0)
 const dragStartY = ref(0)
@@ -56,8 +56,8 @@ const previewImageStyle = computed(() => {
     return {}
   }
 
-  const stageWidth = previewStageWidth.value > 0 ? previewStageWidth.value : viewportWidth.value * 0.88
-  const stageHeight = previewStageHeight.value > 0 ? previewStageHeight.value : (viewportHeight.value - 72)
+  const stageWidth = previewViewportWidth.value > 0 ? previewViewportWidth.value : viewportWidth.value * 0.88
+  const stageHeight = previewViewportHeight.value > 0 ? previewViewportHeight.value : (viewportHeight.value - 72)
   const maxWidth = Math.min(stageWidth, 1400)
   const maxHeight = Math.max(140, stageHeight)
   const fitScale = Math.min(
@@ -151,6 +151,12 @@ async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
     return
   }
 
+  if (boundedZoom <= 100) {
+    nextStage.scrollLeft = 0
+    nextStage.scrollTop = 0
+    return
+  }
+
   const targetContentX = anchorRatioX * Math.max(1, nextStage.scrollWidth)
   const targetContentY = anchorRatioY * Math.max(1, nextStage.scrollHeight)
   const nextScrollLeft = targetContentX - pointX
@@ -230,8 +236,14 @@ function syncStageMetrics() {
     return
   }
 
-  previewStageWidth.value = stage.clientWidth
-  previewStageHeight.value = stage.clientHeight
+  const styles = window.getComputedStyle(stage)
+  const paddingX = (Number.parseFloat(styles.paddingLeft || '0') || 0)
+    + (Number.parseFloat(styles.paddingRight || '0') || 0)
+  const paddingY = (Number.parseFloat(styles.paddingTop || '0') || 0)
+    + (Number.parseFloat(styles.paddingBottom || '0') || 0)
+
+  previewViewportWidth.value = Math.max(1, stage.clientWidth - paddingX)
+  previewViewportHeight.value = Math.max(1, stage.clientHeight - paddingY)
 }
 
 function onPreviewMouseDown(event) {
@@ -451,7 +463,10 @@ onBeforeUnmount(() => {
       <div
         ref="previewStageRef"
         class="preview-stage"
-        :class="{ 'preview-stage--dragging': isDraggingPreview }"
+        :class="{
+          'preview-stage--dragging': isDraggingPreview,
+          'preview-stage--fit': zoomPercent <= 100,
+        }"
         @mousedown="onPreviewMouseDown"
         @dblclick="onPreviewDoubleClick"
         @wheel="onPreviewWheel"
@@ -583,6 +598,10 @@ onBeforeUnmount(() => {
   cursor: grab;
   user-select: none;
   touch-action: none;
+}
+
+.preview-stage--fit {
+  overflow: hidden;
 }
 
 .preview-stage--dragging {
