@@ -50,6 +50,7 @@ const pinchRafId = ref(0)
 const pinchPendingZoom = ref(0)
 const pinchPendingFocusX = ref(0)
 const pinchPendingFocusY = ref(0)
+let applyZoomVersion = 0
 
 const previewImageStyle = computed(() => {
   if (!previewNaturalWidth.value || !previewNaturalHeight.value) {
@@ -100,6 +101,7 @@ function clamp(value, min, max) {
 }
 
 async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
+  const currentVersion = ++applyZoomVersion
   const boundedZoom = clamp(nextZoom, 50, 300)
   if (boundedZoom === zoomPercent.value) {
     return
@@ -130,6 +132,11 @@ async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
 
   zoomPercent.value = boundedZoom
   await nextTick()
+
+  // Ignore stale zoom operations that were superseded by newer gesture frames.
+  if (currentVersion !== applyZoomVersion) {
+    return
+  }
 
   const nextStage = previewStageRef.value
   const nextImage = previewImageRef.value
