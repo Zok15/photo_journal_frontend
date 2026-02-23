@@ -1431,7 +1431,7 @@ watch(previewGridRef, () => {
                 />
               </div>
               <div class="preview-card-meta">
-                <strong>{{ tile.photo.original_name }}</strong>
+                <strong class="preview-card-name" :title="tile.photo.original_name || ''">{{ tile.photo.original_name }}</strong>
                 <div class="thumb-bottom">
                   <span>{{ tile.photo.mime }} · {{ formatSize(tile.photo.size) }}</span>
                   <div class="thumb-actions">
@@ -1883,24 +1883,34 @@ watch(previewGridRef, () => {
   color: var(--muted);
 }
 
+.preview-card-name {
+  min-width: 0;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .thumb-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr;
+  align-items: start;
   gap: 8px;
-  margin-top: 2px;
 }
 
 .thumb-bottom span {
   min-width: 0;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
 .thumb-actions {
-  display: flex;
+  display: inline-flex;
+  flex-wrap: nowrap;
   gap: 6px;
   flex: 0 0 auto;
+  justify-self: end;
 }
 
 .icon-ghost-btn {
@@ -2024,6 +2034,10 @@ watch(previewGridRef, () => {
   .preview-card-meta {
     padding: 9px;
     gap: 4px;
+  }
+
+  .thumb-actions {
+    justify-self: start;
   }
 
   .icon-ghost-btn {
