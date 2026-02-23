@@ -2,9 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../lib/api'
+import { collectHeroPhotosFromSeries, HERO_CACHE_TTL_MS, HERO_MAX_POOL, readHeroCache, shufflePhotos, writeHeroCache } from '../lib/heroPhotoPool'
+import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
 import { currentLocale, t } from '../lib/i18n'
 import { isAuthenticated } from '../lib/session'
 import { seriesPath } from '../lib/seriesPath'
+import { formatLocalizedTagLabel, normalizeTagValue } from '../lib/tagLabels'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 
 const signedIn = computed(() => isAuthenticated.value)
@@ -15,9 +18,6 @@ const featuredError = ref('')
 const previewVersion = ref(Date.now())
 const heroPhotoPool = ref([])
 const heroCacheVersion = ref(0)
-const HERO_MAX_POOL = 36
-const HERO_CACHE_TTL_MS = 20 * 60 * 1000
-const HERO_CACHE_KEY = 'home:hero:photo-pool:v1'
 const HERO_ROW_GAP = 8
 const HERO_INNER_VERTICAL_PADDING = 10
 const HERO_STACK_BREAKPOINT = 1100
@@ -35,21 +35,6 @@ const heroGridElements = new Set()
 let heroResizeObserver = null
 let heroRefreshTimerId = null
 
-const TAG_LABELS = {
-  travel: { ru: 'Путешествия', en: 'Travel' },
-  street: { ru: 'Улица', en: 'Street' },
-  portrait: { ru: 'Портрет', en: 'Portrait' },
-  nature: { ru: 'Природа', en: 'Nature' },
-  landscape: { ru: 'Пейзаж', en: 'Landscape' },
-  city: { ru: 'Город', en: 'City' },
-  bird: { ru: 'Птицы', en: 'Birds' },
-  flower: { ru: 'Цветы', en: 'Flowers' },
-  animal: { ru: 'Животные', en: 'Animals' },
-  food: { ru: 'Еда', en: 'Food' },
-  people: { ru: 'Люди', en: 'People' },
-  architecture: { ru: 'Архитектура', en: 'Architecture' },
-}
-
 function photoUrl(photo) {
   const direct = String(photo?.preview_url || '').trim() || String(photo?.public_url || '').trim()
   if (direct) {
@@ -57,87 +42,6 @@ function photoUrl(photo) {
   }
 
   return buildStorageUrl(photo?.path)
-}
-
-function collectHeroPhotosFromSeries(items) {
-  const seen = new Set()
-  const photos = []
-
-  items.forEach((item) => {
-    const previews = Array.isArray(item?.preview_photos) ? item.preview_photos : []
-    previews.forEach((photo, index) => {
-      const id = Number(photo?.id || 0) || `${item?.id || 'series'}-${index}`
-      const rawSrc = String(photo?.public_url || '').trim() || photoUrl(photo)
-      if (!rawSrc) {
-        return
-      }
-
-      const dedupeKey = `${id}:${rawSrc}`
-      if (seen.has(dedupeKey)) {
-        return
-      }
-
-      seen.add(dedupeKey)
-      photos.push({
-        id,
-        src: rawSrc,
-        alt: photo?.original_name || item?.title || `photo-${id}`,
-      })
-    })
-  })
-
-  return photos
-}
-
-function shufflePhotos(items) {
-  const shuffled = [...items]
-  for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-
-  return shuffled
-}
-
-function readHeroCache() {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const raw = window.localStorage.getItem(HERO_CACHE_KEY)
-    if (!raw) {
-      return null
-    }
-
-    const parsed = JSON.parse(raw)
-    const expiresAt = Number(parsed?.expires_at || 0)
-    const version = Number(parsed?.version || 0)
-    const photos = Array.isArray(parsed?.photos) ? parsed.photos : []
-    if (expiresAt <= Date.now() || version <= 0 || !photos.length) {
-      return null
-    }
-
-    return { version, photos }
-  } catch (_) {
-    return null
-  }
-}
-
-function writeHeroCache(version, photos) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    window.localStorage.setItem(HERO_CACHE_KEY, JSON.stringify({
-      version,
-      expires_at: Date.now() + HERO_CACHE_TTL_MS,
-      photos,
-    }))
-  } catch (_) {
-    // Ignore localStorage errors (private mode/quota issues).
-  }
 }
 
 function coverUrl(item) {
@@ -153,28 +57,8 @@ function hasCover(item) {
   return Boolean(coverUrl(item))
 }
 
-function normalizeTagValue(value) {
-  return String(value || '').trim().toLowerCase()
-}
-
 function formatTagLabel(rawTag) {
-  const source = String(rawTag || '').trim()
-  const normalized = normalizeTagValue(source)
-  const locale = currentLocale.value === 'en' ? 'en' : 'ru'
-  const mapped = TAG_LABELS[normalized]?.[locale]
-  if (mapped) {
-    return mapped
-  }
-
-  const prepared = source.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!prepared) {
-    return source
-  }
-
-  return prepared
-    .split(' ')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ')
+  return formatLocalizedTagLabel(rawTag, currentLocale.value)
 }
 
 const topTagLinks = computed(() => {
@@ -226,7 +110,7 @@ const isHeroStacked = computed(() => viewportWidth.value <= HERO_STACK_BREAKPOIN
 const heroPhotos = computed(() => {
   const source = heroPhotoPool.value.length
     ? heroPhotoPool.value
-    : collectHeroPhotosFromSeries(featuredSeries.value).slice(0, HERO_MAX_POOL)
+    : collectHeroPhotosFromSeries(featuredSeries.value, photoUrl).slice(0, HERO_MAX_POOL)
   const cacheVersion = heroCacheVersion.value > 0 ? heroCacheVersion.value : previewVersion.value
 
   return source.map((photo) => ({
@@ -240,30 +124,10 @@ async function ensureHeroRatio(photo) {
     return
   }
 
-  try {
-    const ratio = await new Promise((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => {
-        if (!image.naturalWidth || !image.naturalHeight) {
-          resolve(1)
-          return
-        }
-
-        resolve(image.naturalWidth / image.naturalHeight)
-      }
-      image.onerror = reject
-      image.src = photo.src
-    })
-
-    heroAspectRatios.value = {
-      ...heroAspectRatios.value,
-      [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
-    }
-  } catch (_) {
-    heroAspectRatios.value = {
-      ...heroAspectRatios.value,
-      [photo.id]: 1,
-    }
+  const ratio = await resolveImageAspectRatio(photo.src)
+  heroAspectRatios.value = {
+    ...heroAspectRatios.value,
+    [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
   }
 }
 
@@ -571,7 +435,7 @@ async function loadHeroPhotoPool() {
 
   try {
     const allSeries = await fetchPublicSeriesPages(100)
-    const randomizedPool = shufflePhotos(collectHeroPhotosFromSeries(allSeries))
+    const randomizedPool = shufflePhotos(collectHeroPhotosFromSeries(allSeries, photoUrl))
       .slice(0, HERO_MAX_POOL)
     const version = Math.floor(Date.now() / HERO_CACHE_TTL_MS)
     if (!randomizedPool.length) {

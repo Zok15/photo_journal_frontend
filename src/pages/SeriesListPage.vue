@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
+import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
+import { buildPreviewRowsWithClampedHeights } from '../lib/previewRows'
 import { getUser, setCurrentUser } from '../lib/session'
 import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
@@ -536,140 +538,11 @@ async function ensurePreviewRatio(photo) {
     return
   }
 
-  try {
-    const ratio = await new Promise((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => {
-        if (!image.naturalWidth || !image.naturalHeight) {
-          resolve(1)
-          return
-        }
-
-        resolve(image.naturalWidth / image.naturalHeight)
-      }
-      image.onerror = reject
-      image.src = photo.src
-    })
-
-    previewAspectRatios.value = {
-      ...previewAspectRatios.value,
-      [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
-    }
-  } catch (_) {
-    previewAspectRatios.value = {
-      ...previewAspectRatios.value,
-      [photo.id]: 1,
-    }
+  const ratio = await resolveImageAspectRatio(photo.src)
+  previewAspectRatios.value = {
+    ...previewAspectRatios.value,
+    [photo.id]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
   }
-}
-
-function buildPreviewRows(photos, containerWidth) {
-  const previewGap = 8
-  const minPerRow = 2
-  const maxPerRow = 5
-  const targetRowHeight = 170
-  const minRowHeight = 96
-  const maxRowHeight = 260
-  const minPreviewRatio = 0.72
-  const maxPreviewRatio = 2.4
-  const items = photos.map((photo) => ({
-    photo,
-    ratio: Math.min(
-      maxPreviewRatio,
-      Math.max(minPreviewRatio, previewAspectRatios.value[photo.id] || 1),
-    ),
-  }))
-
-  if (!items.length) {
-    return { rows: [] }
-  }
-
-  if (items.length === 1) {
-    const ratio = items[0].ratio || 1
-    const height = Math.max(120, Math.min(240, containerWidth / ratio))
-    return {
-      rows: [{ gap: 0, height, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
-    }
-  }
-
-  const minRows = Math.ceil(items.length / maxPerRow)
-  const maxRows = Math.floor(items.length / minPerRow)
-  let best = null
-
-  for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
-    const base = Math.floor(items.length / rowsCount)
-    const extra = items.length % rowsCount
-    const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
-
-    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
-      continue
-    }
-
-    const ratiosByRow = []
-    let cursor = 0
-    for (const count of counts) {
-      const chunk = items.slice(cursor, cursor + count)
-      cursor += count
-      ratiosByRow.push(chunk.reduce((sum, item) => sum + item.ratio, 0))
-    }
-
-    const rowHeights = ratiosByRow.map((ratioSum, index) => {
-      const rowWidth = containerWidth - previewGap * (counts[index] - 1)
-      return rowWidth / ratioSum
-    })
-
-    const rows = []
-    cursor = 0
-    let emptySpace = 0
-    let outOfRangePenalty = 0
-    let targetDeviation = 0
-
-    for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
-      const count = counts[rowIndex]
-      const chunk = items.slice(cursor, cursor + count)
-      cursor += count
-
-      const rowHeight = rowHeights[rowIndex]
-      const clampedHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight))
-      const widths = chunk.map((item) => item.ratio * clampedHeight)
-      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
-      const used = rowTotalWidth + previewGap * (count - 1)
-      emptySpace += Math.abs(containerWidth - used)
-      targetDeviation += Math.abs(targetRowHeight - clampedHeight)
-      if (rowHeight !== clampedHeight) {
-        outOfRangePenalty += Math.abs(rowHeight - clampedHeight) * 6
-      }
-
-      rows.push(
-        {
-          gap: previewGap,
-          height: clampedHeight,
-          tiles: chunk.map((item) => ({
-            photo: item.photo,
-            width: item.ratio * clampedHeight,
-          })),
-        }
-      )
-    }
-
-    const score = emptySpace + targetDeviation * 1.4 + outOfRangePenalty
-    if (!best || score < best.score) {
-      best = { score, rows }
-    }
-  }
-
-  if (!best) {
-    const height = 160
-    return {
-      rows: [{
-        gap: previewGap,
-        height,
-        tiles: items.map((item) => ({ photo: item.photo, width: item.ratio * height })),
-      }],
-    }
-  }
-
-  return { rows: best.rows }
 }
 
 const previewRowsBySeries = computed(() => {
@@ -687,7 +560,24 @@ const previewRowsBySeries = computed(() => {
     }
 
     const width = previewGridWidths.value[seriesId] || 920
-    map[seriesId] = buildPreviewRows(photos, width)
+    map[seriesId] = buildPreviewRowsWithClampedHeights(
+      photos,
+      width,
+      previewAspectRatios.value,
+      {
+        gap: 8,
+        minPerRow: 2,
+        maxPerRow: 5,
+        targetRowHeight: 170,
+        minRowHeight: 96,
+        maxRowHeight: 260,
+        minPreviewRatio: 0.72,
+        maxPreviewRatio: 2.4,
+        singleMinHeight: 120,
+        singleMaxHeight: 240,
+        fallbackHeight: 160,
+      },
+    )
   })
 
   return map

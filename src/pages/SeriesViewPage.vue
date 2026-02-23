@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
+import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
 import { optimizeImagesForUpload } from '../lib/imageOptimizer'
+import { buildPreviewRowsWithDynamicGrid } from '../lib/previewRows'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
@@ -237,171 +239,11 @@ async function ensurePreviewRatio(photo) {
     return
   }
 
-  try {
-    const ratio = await new Promise((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => {
-        if (!image.naturalWidth || !image.naturalHeight) {
-          resolve(1)
-          return
-        }
-
-        resolve(image.naturalWidth / image.naturalHeight)
-      }
-      image.onerror = reject
-      image.src = src
-    })
-
-    previewAspectRatios.value = {
-      ...previewAspectRatios.value,
-      [photoId]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
-    }
-  } catch (_) {
-    previewAspectRatios.value = {
-      ...previewAspectRatios.value,
-      [photoId]: 1,
-    }
+  const ratio = await resolveImageAspectRatio(src)
+  previewAspectRatios.value = {
+    ...previewAspectRatios.value,
+    [photoId]: Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
   }
-}
-
-function buildPreviewRows(photos, containerWidth) {
-  const previewGap = 10
-  const minPerRow = 2
-  const maxPerRow = 5
-  const minTileWidth = containerWidth <= 760 ? 150 : 180
-  const dynamicMaxPerRow = Math.max(
-    minPerRow,
-    Math.min(
-      maxPerRow,
-      Math.floor((containerWidth + previewGap) / (minTileWidth + previewGap)),
-    ),
-  )
-  const targetRowHeight = 300
-  const minRowHeight = 210
-  const maxRowHeight = 420
-  const items = photos.map((photo) => ({
-    photo,
-    ratio: previewAspectRatios.value[photo.id] || 1,
-  }))
-
-  if (!items.length) {
-    return { rows: [] }
-  }
-
-  if (items.length === 1) {
-    const ratio = items[0].ratio || 1
-    // Keep single-tile row within container width.
-    const height = Math.min(300, containerWidth / ratio)
-    return {
-      rows: [{ gap: 0, height, tiles: [{ photo: items[0].photo, width: ratio * height }] }],
-    }
-  }
-
-  const minRows = Math.ceil(items.length / dynamicMaxPerRow)
-  const maxRows = Math.floor(items.length / minPerRow)
-  let best = null
-
-  for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
-    const base = Math.floor(items.length / rowsCount)
-    const extra = items.length % rowsCount
-    const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
-
-    if (counts.some((count) => count < minPerRow || count > dynamicMaxPerRow)) {
-      continue
-    }
-
-    const ratiosByRow = []
-    let cursor = 0
-    for (const count of counts) {
-      const chunk = items.slice(cursor, cursor + count)
-      cursor += count
-      ratiosByRow.push(chunk.reduce((sum, item) => sum + item.ratio, 0))
-    }
-
-    const rowHeights = ratiosByRow.map((ratioSum, index) => {
-      const rowWidth = containerWidth - previewGap * (counts[index] - 1)
-      return rowWidth / ratioSum
-    })
-
-    const rows = []
-    cursor = 0
-    let emptySpace = 0
-    let outOfRangePenalty = 0
-    let targetDeviation = 0
-
-    for (let rowIndex = 0; rowIndex < counts.length; rowIndex += 1) {
-      const count = counts[rowIndex]
-      const chunk = items.slice(cursor, cursor + count)
-      cursor += count
-
-      const rowHeight = rowHeights[rowIndex]
-      const widths = chunk.map((item) => item.ratio * rowHeight)
-      const minWidthInRow = widths.length ? Math.min(...widths) : 0
-      const rowTotalWidth = widths.reduce((sum, width) => sum + width, 0)
-      const used = rowTotalWidth + previewGap * (count - 1)
-      emptySpace += Math.abs(containerWidth - used)
-      targetDeviation += Math.abs(targetRowHeight - rowHeight)
-      if (rowHeight < minRowHeight) {
-        outOfRangePenalty += Math.abs(minRowHeight - rowHeight) * 6
-      } else if (rowHeight > maxRowHeight) {
-        outOfRangePenalty += Math.abs(rowHeight - maxRowHeight) * 6
-      }
-      if (minWidthInRow < minTileWidth) {
-        outOfRangePenalty += (minTileWidth - minWidthInRow) * 10
-      }
-
-      rows.push({
-        gap: previewGap,
-        height: rowHeight,
-        tiles: chunk.map((item) => ({
-          photo: item.photo,
-          width: item.ratio * rowHeight,
-        })),
-      })
-    }
-
-    const score = emptySpace + targetDeviation * 1.4 + outOfRangePenalty
-    if (!best || score < best.score) {
-      best = { score, rows }
-    }
-  }
-
-  if (!best) {
-    const rows = []
-    let cursor = 0
-
-    while (cursor < items.length) {
-      const remaining = items.length - cursor
-      let count = Math.min(dynamicMaxPerRow, remaining)
-
-      // Avoid leaving a single-tile tail when we can rebalance the current row.
-      if (remaining === count + 1 && count > minPerRow) {
-        count -= 1
-      }
-
-      const chunk = items.slice(cursor, cursor + count)
-      cursor += count
-      const ratioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
-      const rowWidth = containerWidth - previewGap * (chunk.length - 1)
-      // Fallback rows must strictly fit container width.
-      const rowHeight = Math.min(maxRowHeight, rowWidth / ratioSum)
-
-      rows.push({
-        gap: previewGap,
-        height: rowHeight,
-        tiles: chunk.map((item) => ({
-          photo: item.photo,
-          width: item.ratio * rowHeight,
-        })),
-      })
-    }
-
-    return {
-      rows,
-    }
-  }
-
-  return { rows: best.rows }
 }
 
 const previewRows = computed(() => {
@@ -411,7 +253,23 @@ const previewRows = computed(() => {
   }
 
   const width = previewGridWidth.value || 1120
-  return buildPreviewRows(photos, width).rows
+  return buildPreviewRowsWithDynamicGrid(
+    photos,
+    width,
+    previewAspectRatios.value,
+    {
+      gap: 10,
+      minPerRow: 2,
+      maxPerRow: 5,
+      minTileWidthMobile: 150,
+      minTileWidthDesktop: 180,
+      mobileBreakPoint: 760,
+      targetRowHeight: 300,
+      minRowHeight: 210,
+      maxRowHeight: 420,
+      singleMaxHeight: 300,
+    },
+  ).rows
 })
 
 function syncPreviewGridObserver() {
