@@ -102,6 +102,29 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.src,
+  () => {
+    if (!props.open) {
+      return
+    }
+
+    // Always start each photo from a stable centered fit state.
+    zoomPercent.value = 100
+    pinchStartDistance.value = 0
+    cancelPendingPinchZoom()
+
+    nextTick(() => {
+      syncStageMetrics()
+      const stage = previewStageRef.value
+      if (stage) {
+        stage.scrollLeft = 0
+        stage.scrollTop = 0
+      }
+    })
+  },
+)
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
@@ -594,7 +617,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 16px;
+  padding: 16px 0;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -679,7 +702,7 @@ onBeforeUnmount(() => {
   }
 
   .preview-stage {
-    padding: 10px;
+    padding: 10px 0;
   }
 
   .preview-actions {
