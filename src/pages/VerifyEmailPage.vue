@@ -15,6 +15,35 @@ const VERIFY_TIMEOUT_MS = 15000
 const primaryLink = computed(() => (getToken() ? '/series' : '/login'))
 const primaryLabel = computed(() => (getToken() ? t('Перейти в мой журнал') : t('Перейти ко входу')))
 
+function localizeVerificationApiMessage(rawMessage, fallbackKey) {
+  const message = String(rawMessage || '').trim()
+  if (!message) {
+    return t(fallbackKey)
+  }
+
+  if (message === 'Email has been verified.') {
+    return t('Email подтверждён.')
+  }
+
+  if (message === 'Email already verified.') {
+    return t('Email уже подтверждён.')
+  }
+
+  if (message === 'Invalid or expired verification link.') {
+    return t('Ссылка подтверждения неполная или устарела.')
+  }
+
+  if (message === 'Invalid verification link.') {
+    return t('Ссылка подтверждения недействительна.')
+  }
+
+  if (message === 'User not found.') {
+    return t('Пользователь не найден.')
+  }
+
+  return message
+}
+
 async function verify() {
   const id = String(route.query.id || '').trim()
   const hash = String(route.query.hash || '').trim()
@@ -39,13 +68,13 @@ async function verify() {
 
     window.clearTimeout(timeoutId)
     success.value = true
-    message.value = data?.message || t('Email подтверждён.')
+    message.value = localizeVerificationApiMessage(data?.message, 'Email подтверждён.')
   } catch (e) {
     success.value = false
     const isTimeout = e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError'
     message.value = isTimeout
       ? t('Не удалось подтвердить email: таймаут запроса.')
-      : (e?.response?.data?.message || t('Не удалось подтвердить email.'))
+      : localizeVerificationApiMessage(e?.response?.data?.message, 'Не удалось подтвердить email.')
   } finally {
     loading.value = false
   }

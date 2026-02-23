@@ -25,10 +25,35 @@ const emailVerificationRequired = computed(() => {
     return false
   }
 
+  if (route.name === 'verify-email') {
+    return false
+  }
+
   return !currentUser.value?.email_verified_at
 })
 
 const verificationEmail = computed(() => String(currentUser.value?.email || '').trim())
+
+function localizeVerificationApiMessage(rawMessage, fallbackKey) {
+  const message = String(rawMessage || '').trim()
+  if (!message) {
+    return t(fallbackKey)
+  }
+
+  if (message === 'Verification email has been sent.') {
+    return t('Письмо для подтверждения отправлено повторно.')
+  }
+
+  if (message === 'Email already verified.') {
+    return t('Email уже подтверждён.')
+  }
+
+  if (message === 'Verification email service is unavailable.') {
+    return t('Сервис отправки писем недоступен.')
+  }
+
+  return message
+}
 
 async function changeLocale(nextLocale) {
   if (nextLocale === currentLocale.value) {
@@ -94,9 +119,15 @@ async function resendVerificationEmail() {
     const { data } = await api.post('/auth/email/verification-notification', {
       locale: currentLocale.value,
     })
-    verificationInfo.value = data?.message || t('Письмо для подтверждения отправлено повторно.')
+    verificationInfo.value = localizeVerificationApiMessage(
+      data?.message,
+      'Письмо для подтверждения отправлено повторно.',
+    )
   } catch (e) {
-    verificationError.value = e?.response?.data?.message || t('Не удалось отправить письмо подтверждения.')
+    verificationError.value = localizeVerificationApiMessage(
+      e?.response?.data?.message,
+      'Не удалось отправить письмо подтверждения.',
+    )
   } finally {
     verificationResending.value = false
   }
