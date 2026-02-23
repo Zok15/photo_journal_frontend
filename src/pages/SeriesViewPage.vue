@@ -63,6 +63,7 @@ let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
 let statusPollTimerId = null
+let statusPollInFlight = false
 
 const STATUS_POLL_INTERVAL_MS = 5000
 const STATUS_POLL_RETRY_MS = 9000
@@ -132,21 +133,39 @@ function stopStatusPolling() {
     clearTimeout(statusPollTimerId)
     statusPollTimerId = null
   }
+  statusPollInFlight = false
+}
+
+function scheduleStatusPoll(delayMs) {
+  if (statusPollTimerId !== null) {
+    clearTimeout(statusPollTimerId)
+  }
+  statusPollTimerId = window.setTimeout(pollSeriesStatusTick, delayMs)
 }
 
 async function pollSeriesStatusTick() {
   statusPollTimerId = null
-  if (publicationStatus(item.value) !== 'pending_moderation') {
+  if (statusPollInFlight) {
     return
   }
 
-  const loaded = await loadSeries({ silent: true, statusOnly: true })
+  statusPollInFlight = true
   if (publicationStatus(item.value) !== 'pending_moderation') {
+    statusPollInFlight = false
     return
   }
 
-  const nextDelay = loaded ? STATUS_POLL_INTERVAL_MS : STATUS_POLL_RETRY_MS
-  statusPollTimerId = window.setTimeout(pollSeriesStatusTick, nextDelay)
+  try {
+    const loaded = await loadSeries({ silent: true, statusOnly: true })
+    if (publicationStatus(item.value) !== 'pending_moderation') {
+      return
+    }
+
+    const nextDelay = loaded ? STATUS_POLL_INTERVAL_MS : STATUS_POLL_RETRY_MS
+    scheduleStatusPoll(nextDelay)
+  } finally {
+    statusPollInFlight = false
+  }
 }
 
 function ensureStatusPolling() {
@@ -155,11 +174,11 @@ function ensureStatusPolling() {
     return
   }
 
-  if (statusPollTimerId !== null) {
+  if (statusPollTimerId !== null || statusPollInFlight) {
     return
   }
 
-  statusPollTimerId = window.setTimeout(pollSeriesStatusTick, STATUS_POLL_INTERVAL_MS)
+  scheduleStatusPoll(STATUS_POLL_INTERVAL_MS)
 }
 
 function currentSeriesKey() {
@@ -1114,7 +1133,10 @@ async function loadSeries(options = {}) {
         const response = await api.get(`/series/${route.params.slug}`, {
           params: includePhotos
             ? { include_photos: 1 }
-            : undefined,
+            : {
+              status_only: 1,
+              include_blocking_tags: canViewModerationTags.value ? 1 : 0,
+            },
         })
         data = response.data
       } catch (e) {
@@ -1128,7 +1150,10 @@ async function loadSeries(options = {}) {
       const response = await api.get(`/public/series/${route.params.slug}`, {
         params: includePhotos
           ? { include_photos: 1 }
-          : undefined,
+          : {
+            status_only: 1,
+            include_blocking_tags: canViewModerationTags.value ? 1 : 0,
+          },
       })
       data = response.data
     }

@@ -34,6 +34,7 @@ let previewRefreshRetries = 0
 const MAX_PREVIEW_REFRESH_RETRIES = 1
 let skipNextRouteReload = false
 let listStatusPollTimerId = null
+let listStatusPollInFlight = false
 const syncingQueryState = ref(false)
 const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
@@ -375,21 +376,39 @@ function stopListStatusPolling() {
     clearTimeout(listStatusPollTimerId)
     listStatusPollTimerId = null
   }
+  listStatusPollInFlight = false
+}
+
+function scheduleListStatusPoll(delayMs) {
+  if (listStatusPollTimerId !== null) {
+    clearTimeout(listStatusPollTimerId)
+  }
+  listStatusPollTimerId = window.setTimeout(pollListStatusTick, delayMs)
 }
 
 async function pollListStatusTick() {
   listStatusPollTimerId = null
-  if (!hasPendingModerationItems()) {
+  if (listStatusPollInFlight) {
     return
   }
 
-  const loaded = await loadSeries(page.value || 1, { silent: true })
+  listStatusPollInFlight = true
   if (!hasPendingModerationItems()) {
+    listStatusPollInFlight = false
     return
   }
 
-  const nextDelay = loaded ? LIST_STATUS_POLL_INTERVAL_MS : LIST_STATUS_POLL_RETRY_MS
-  listStatusPollTimerId = window.setTimeout(pollListStatusTick, nextDelay)
+  try {
+    const loaded = await loadSeries(page.value || 1, { silent: true, statusOnly: true })
+    if (!hasPendingModerationItems()) {
+      return
+    }
+
+    const nextDelay = loaded ? LIST_STATUS_POLL_INTERVAL_MS : LIST_STATUS_POLL_RETRY_MS
+    scheduleListStatusPoll(nextDelay)
+  } finally {
+    listStatusPollInFlight = false
+  }
 }
 
 function ensureListStatusPolling() {
@@ -398,11 +417,11 @@ function ensureListStatusPolling() {
     return
   }
 
-  if (listStatusPollTimerId !== null) {
+  if (listStatusPollTimerId !== null || listStatusPollInFlight) {
     return
   }
 
-  listStatusPollTimerId = window.setTimeout(pollListStatusTick, LIST_STATUS_POLL_INTERVAL_MS)
+  scheduleListStatusPoll(LIST_STATUS_POLL_INTERVAL_MS)
 }
 
 function visibilityLabel(item) {
@@ -932,6 +951,12 @@ async function loadSeriesPreviews(items) {
   await Promise.all(photos.map((photo) => ensurePreviewRatio(photo)))
 }
 
+function buildSeriesPreviewSignature(items) {
+  return (items || [])
+    .map((item) => `${Number(item?.id || 0)}:${Number(item?.photos_count || 0)}`)
+    .join('|')
+}
+
 function isPreviewImageLoaded(photoId) {
   return Boolean(previewImageLoaded.value[String(photoId)])
 }
@@ -1072,6 +1097,7 @@ async function createSeries() {
 
 async function loadSeries(targetPage = 1, options = {}) {
   const silent = Boolean(options?.silent)
+  const statusOnly = Boolean(options?.statusOnly)
   const requestId = ++loadSeriesRequestId
   let loaded = false
   if (!silent) {
@@ -1106,9 +1132,14 @@ async function loadSeries(targetPage = 1, options = {}) {
       params.sort = activeSort.value
     }
 
-    // List payload contains temporary signed preview URLs.
-    // Force a unique URL to avoid browser 304 reuse of expired preview links.
-    params.preview_nonce = Date.now()
+    if (statusOnly) {
+      params.status_only = 1
+      params.include_blocking_tags = canViewModerationTags.value ? 1 : 0
+    } else if (!silent) {
+      // For regular loads force a fresh payload with preview URLs.
+      // Silent moderation polling should not churn preview URLs to avoid flicker.
+      params.preview_nonce = Date.now()
+    }
 
     const { data } = await api.get('/series', {
       params,
@@ -1119,17 +1150,48 @@ async function loadSeries(targetPage = 1, options = {}) {
     }
 
     const items = data.data || []
-    previewUrlVersion.value = Date.now()
-    const calendarDates = Array.isArray(data?.calendar_dates)
-      ? data.calendar_dates.map((value) => String(value || '').trim()).filter(Boolean)
-      : Array.from(extractSeriesDateKeys(items))
-    calendarMarkedDateKeys.value = calendarDates
+    if (statusOnly) {
+      const statusById = new Map(
+        items.map((entry) => [Number(entry?.id || 0), entry]).filter(([id]) => id > 0),
+      )
+      series.value = series.value.map((entry) => {
+        const next = statusById.get(Number(entry?.id || 0))
+        if (!next) {
+          return entry
+        }
 
-    series.value = items
-    page.value = data.current_page || targetPage
-    lastPage.value = data.last_page || 1
-    loadedPage.value = page.value
-    await loadSeriesPreviews(series.value)
+        const merged = {
+          ...entry,
+          publication_status: next.publication_status ?? entry.publication_status,
+          moderation_status: next.moderation_status ?? entry.moderation_status,
+          is_public: typeof next.is_public === 'boolean' ? next.is_public : entry.is_public,
+        }
+
+        if (Object.prototype.hasOwnProperty.call(next, 'moderation_labels')) {
+          merged.moderation_labels = Array.isArray(next.moderation_labels) ? next.moderation_labels : []
+        }
+
+        return merged
+      })
+    } else {
+      const previousItems = series.value
+      const previousPreviewSignature = buildSeriesPreviewSignature(previousItems)
+      const nextPreviewSignature = buildSeriesPreviewSignature(items)
+      const calendarDates = Array.isArray(data?.calendar_dates)
+        ? data.calendar_dates.map((value) => String(value || '').trim()).filter(Boolean)
+        : Array.from(extractSeriesDateKeys(items))
+      calendarMarkedDateKeys.value = calendarDates
+
+      series.value = items
+      page.value = data.current_page || targetPage
+      lastPage.value = data.last_page || 1
+      loadedPage.value = page.value
+      const shouldRefreshPreviews = !silent || previousPreviewSignature !== nextPreviewSignature
+      if (shouldRefreshPreviews) {
+        previewUrlVersion.value = Date.now()
+        await loadSeriesPreviews(series.value)
+      }
+    }
     previewRefreshRetries = 0
     loaded = true
     ensureListStatusPolling()
