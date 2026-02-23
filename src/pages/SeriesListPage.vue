@@ -1575,10 +1575,20 @@ function toggleMobileFilters() {
                 </span>
               </div>
 
-              <p v-if="item.description" class="series-desc">{{ item.description }}</p>
+              <RouterLink
+                v-if="item.description"
+                class="series-body-link"
+                :to="seriesPath(item)"
+              >
+                <p class="series-desc">{{ item.description }}</p>
+              </RouterLink>
 
-              <div
+              <RouterLink
                 v-if="previewTiles(item.id).length"
+                class="series-body-link"
+                :to="seriesPath(item)"
+              >
+                <div
                 :ref="(element) => setPreviewGridRef(item.id, element)"
                 class="preview-grid"
               >
@@ -1612,6 +1622,7 @@ function toggleMobileFilters() {
                   </div>
                 </div>
               </div>
+              </RouterLink>
 
               <div v-if="(item.tags || []).length" class="series-card-tags">
                 <button
@@ -2279,6 +2290,12 @@ function toggleMobileFilters() {
   margin: 12px 0;
   color: #4b574f;
   font-size: 18px;
+}
+
+.series-body-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 
 .series-card-tags {

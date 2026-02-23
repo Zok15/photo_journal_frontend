@@ -762,10 +762,20 @@ watch([availableTags, visibleTagRows], async () => {
                 </span>
               </div>
 
-              <p v-if="item.description" class="series-desc">{{ item.description }}</p>
+              <RouterLink
+                v-if="item.description"
+                class="series-body-link"
+                :to="seriesPath(item)"
+              >
+                <p class="series-desc">{{ item.description }}</p>
+              </RouterLink>
 
-              <div
+              <RouterLink
                 v-if="previewTiles(item.id).length"
+                class="series-body-link"
+                :to="seriesPath(item)"
+              >
+                <div
                 :ref="(element) => setPreviewGridRef(item.id, element)"
                 class="preview-grid"
               >
@@ -799,6 +809,7 @@ watch([availableTags, visibleTagRows], async () => {
                   </div>
                 </div>
               </div>
+              </RouterLink>
 
               <div v-if="(item.tags || []).length" class="tags">
                 <button
@@ -1183,6 +1194,12 @@ watch([availableTags, visibleTagRows], async () => {
   margin: 10px 0;
   font-size: 17px;
   color: #4b574f;
+}
+
+.series-body-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 
 .preview-grid {
