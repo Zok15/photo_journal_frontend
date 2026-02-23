@@ -359,6 +359,13 @@ function publicationStatus(item) {
 }
 
 const canViewModerationTags = computed(() => Boolean(currentUser.value?.can_moderate))
+const canCreateSeries = computed(() => {
+  if (currentUser.value?.can_moderate) {
+    return true
+  }
+
+  return Boolean(currentUser.value?.email_verified_at)
+})
 
 function moderationTags(item) {
   const labels = Array.isArray(item?.moderation_labels) ? item.moderation_labels : []
@@ -1352,6 +1359,12 @@ watch([filteredAvailableTags, visibleTagRows], async () => {
   recalcTagRowsLayout()
 }, { immediate: true })
 
+watch(canCreateSeries, (allowed) => {
+  if (!allowed) {
+    showCreateForm.value = false
+  }
+})
+
 function toggleMobileFilters() {
   showMobileFilters.value = !showMobileFilters.value
 }
@@ -1364,7 +1377,7 @@ function toggleMobileFilters() {
         <h1>{{ journalTitle }}</h1>
 
         <div class="header-actions">
-          <button type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
+          <button v-if="canCreateSeries" type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
             {{ showCreateForm ? t('Закрыть форму') : t('Новая серия') }}
           </button>
         </div>
@@ -1594,7 +1607,7 @@ function toggleMobileFilters() {
         </aside>
 
         <main class="content-panel">
-          <section v-if="showCreateForm" class="create-card">
+          <section v-if="showCreateForm && canCreateSeries" class="create-card">
             <h2>{{ t('Новая серия') }}</h2>
 
             <form class="form" @submit.prevent="createSeries">
