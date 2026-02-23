@@ -323,10 +323,9 @@ function onPreviewTouchMove(event) {
     const scale = currentDistance / pinchStartDistance.value
     const nextZoom = clamp(Math.round(pinchStartZoom.value * scale), 50, 300)
     if (nextZoom !== zoomPercent.value) {
-      zoomPercent.value = nextZoom
-      nextTick(() => {
-        refreshZoomOverflow()
-      })
+      const focusClientX = (firstTouch.clientX + secondTouch.clientX) / 2
+      const focusClientY = (firstTouch.clientY + secondTouch.clientY) / 2
+      applyZoom(nextZoom, focusClientX, focusClientY)
     }
     return
   }
