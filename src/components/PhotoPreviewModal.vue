@@ -111,18 +111,19 @@ async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
 
   const stageRect = stage.getBoundingClientRect()
   const hasFocusPoint = Number.isFinite(focusClientX) && Number.isFinite(focusClientY)
-  const centerContentX = hasFocusPoint
-    ? stage.scrollLeft + (focusClientX - stageRect.left)
-    : stage.scrollLeft + stage.clientWidth / 2
-  const centerContentY = hasFocusPoint
-    ? stage.scrollTop + (focusClientY - stageRect.top)
-    : stage.scrollTop + stage.clientHeight / 2
-  const imageLeft = image.offsetLeft
-  const imageTop = image.offsetTop
-  const imageWidth = image.clientWidth
-  const imageHeight = image.clientHeight
-  const relX = imageWidth > 0 ? clamp((centerContentX - imageLeft) / imageWidth, 0, 1) : 0.5
-  const relY = imageHeight > 0 ? clamp((centerContentY - imageTop) / imageHeight, 0, 1) : 0.5
+  const pointX = hasFocusPoint
+    ? clamp(focusClientX - stageRect.left, 0, stage.clientWidth)
+    : stage.clientWidth / 2
+  const pointY = hasFocusPoint
+    ? clamp(focusClientY - stageRect.top, 0, stage.clientHeight)
+    : stage.clientHeight / 2
+
+  const oldScrollWidth = Math.max(1, stage.scrollWidth)
+  const oldScrollHeight = Math.max(1, stage.scrollHeight)
+  const anchorX = stage.scrollLeft + pointX
+  const anchorY = stage.scrollTop + pointY
+  const anchorRatioX = clamp(anchorX / oldScrollWidth, 0, 1)
+  const anchorRatioY = clamp(anchorY / oldScrollHeight, 0, 1)
 
   zoomPercent.value = boundedZoom
   await nextTick()
@@ -138,10 +139,10 @@ async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
     return
   }
 
-  const targetContentX = nextImage.offsetLeft + relX * nextImage.clientWidth
-  const targetContentY = nextImage.offsetTop + relY * nextImage.clientHeight
-  const nextScrollLeft = targetContentX - nextStage.clientWidth / 2
-  const nextScrollTop = targetContentY - nextStage.clientHeight / 2
+  const targetContentX = anchorRatioX * Math.max(1, nextStage.scrollWidth)
+  const targetContentY = anchorRatioY * Math.max(1, nextStage.scrollHeight)
+  const nextScrollLeft = targetContentX - pointX
+  const nextScrollTop = targetContentY - pointY
   const maxScrollLeft = Math.max(0, nextStage.scrollWidth - nextStage.clientWidth)
   const maxScrollTop = Math.max(0, nextStage.scrollHeight - nextStage.clientHeight)
 
@@ -465,7 +466,7 @@ onBeforeUnmount(() => {
 .preview-shell {
   position: relative;
   width: min(92vw, 1400px);
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
   border-radius: 12px;
   border: 1px solid #56645a;
   background: #222924;
@@ -618,18 +619,33 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 680px) {
+  .preview-overlay {
+    padding: 0;
+  }
+
+  .preview-shell {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .preview-stage {
+    padding: 10px;
+  }
+
   .preview-actions {
     gap: 6px;
   }
 
   .preview-toolbar {
-    top: 8px;
-    right: 54px;
+    top: max(8px, env(safe-area-inset-top));
+    right: calc(max(8px, env(safe-area-inset-right)) + 46px);
   }
 
   .preview-close-btn {
-    top: 8px;
-    right: 8px;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
     width: 38px;
     height: 38px;
     font-size: 22px;
@@ -642,11 +658,11 @@ onBeforeUnmount(() => {
   }
 
   .preview-nav-btn--left {
-    left: 6px;
+    left: max(6px, env(safe-area-inset-left));
   }
 
   .preview-nav-btn--right {
-    right: 6px;
+    right: max(6px, env(safe-area-inset-right));
   }
 }
 </style>
