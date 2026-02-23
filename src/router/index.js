@@ -3,6 +3,7 @@ import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
 import ForgotPasswordPage from '../pages/ForgotPasswordPage.vue'
 import ResetPasswordPage from '../pages/ResetPasswordPage.vue'
+import VerifyEmailPage from '../pages/VerifyEmailPage.vue'
 import PrivacyPolicyPage from '../pages/PrivacyPolicyPage.vue'
 import ProfilePage from '../pages/ProfilePage.vue'
 import SeriesListPage from '../pages/SeriesListPage.vue'
@@ -60,6 +61,18 @@ const routes = [
       seo: {
         title: 'Новый пароль',
         description: 'Установка нового пароля по ссылке восстановления.',
+        index: false,
+      },
+    },
+  },
+  {
+    path: '/verify-email',
+    name: 'verify-email',
+    component: VerifyEmailPage,
+    meta: {
+      seo: {
+        title: 'Подтверждение email',
+        description: 'Подтверждение адреса электронной почты в PhotoLog.',
         index: false,
       },
     },
