@@ -225,6 +225,15 @@ function resolvedPhotoUrl(photo) {
   return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
 }
 
+function resolvedPhotoOriginalUrl(photo) {
+  const original = withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
+  if (original) {
+    return original
+  }
+
+  return resolvedPhotoUrl(photo)
+}
+
 function resolvedPhotoFallbackUrl(photo) {
   if (!photo?.preview_url) {
     return ''
@@ -1331,7 +1340,7 @@ watch(previewGridRef, () => {
     <PhotoPreviewModal
       :open="Boolean(selectedPhoto)"
       :photo="selectedPhoto"
-      :src="resolvedPhotoUrl(selectedPhoto)"
+      :src="resolvedPhotoOriginalUrl(selectedPhoto)"
       :can-prev="canPreviewPrev"
       :can-next="canPreviewNext"
       @close="closePreview"

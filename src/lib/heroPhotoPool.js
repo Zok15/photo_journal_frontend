@@ -1,6 +1,6 @@
 export const HERO_MAX_POOL = 36
 export const HERO_CACHE_TTL_MS = 20 * 60 * 1000
-export const HERO_CACHE_KEY = 'home:hero:photo-pool:v1'
+export const HERO_CACHE_KEY = 'home:hero:photo-pool:v2'
 
 export function collectHeroPhotosFromSeries(items, resolvePhotoUrl) {
   const seen = new Set()
@@ -10,7 +10,9 @@ export function collectHeroPhotosFromSeries(items, resolvePhotoUrl) {
     const previews = Array.isArray(item?.preview_photos) ? item.preview_photos : []
     previews.forEach((photo, index) => {
       const id = Number(photo?.id || 0) || `${item?.id || 'series'}-${index}`
-      const rawSrc = String(photo?.public_url || '').trim() || resolvePhotoUrl(photo)
+      const rawSrc = String(photo?.preview_url || '').trim()
+        || String(photo?.public_url || '').trim()
+        || resolvePhotoUrl(photo)
       if (!rawSrc) {
         return
       }
