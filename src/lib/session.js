@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { setAuthToken } from './api'
 import { syncLocaleFromUser } from './i18n'
+import { clearApiCache } from './requestCache'
 
 const TOKEN_KEY = 'pj_token'
 
@@ -22,6 +23,8 @@ export function getUser() {
 }
 
 export function setSession(nextToken, nextUser = null) {
+  clearApiCache()
+
   token.value = nextToken
   user.value = nextUser
 
@@ -31,6 +34,8 @@ export function setSession(nextToken, nextUser = null) {
 }
 
 export function clearSession() {
+  clearApiCache()
+
   token.value = ''
   user.value = null
 
