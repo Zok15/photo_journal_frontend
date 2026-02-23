@@ -33,9 +33,6 @@ const viewportWidth = ref(window.innerWidth)
 const viewportHeight = ref(window.innerHeight)
 const previewStageRef = ref(null)
 const previewImageRef = ref(null)
-const isZoomOverflowing = ref(false)
-const isZoomOverflowingX = ref(false)
-const isZoomOverflowingY = ref(false)
 const isDraggingPreview = ref(false)
 const dragStartX = ref(0)
 const dragStartY = ref(0)
@@ -88,9 +85,6 @@ watch(
     zoomPercent.value = 100
     previewNaturalWidth.value = 0
     previewNaturalHeight.value = 0
-    isZoomOverflowing.value = false
-    isZoomOverflowingX.value = false
-    isZoomOverflowingY.value = false
     isDraggingPreview.value = false
   },
   { immediate: true },
@@ -153,7 +147,6 @@ async function applyZoom(nextZoom, focusClientX = null, focusClientY = null) {
 
   nextStage.scrollLeft = clamp(nextScrollLeft, 0, maxScrollLeft)
   nextStage.scrollTop = clamp(nextScrollTop, 0, maxScrollTop)
-  refreshZoomOverflow()
 }
 
 function zoomIn() {
@@ -207,35 +200,11 @@ function onPreviewKeyDown(event) {
 function onPreviewImageLoad(event) {
   previewNaturalWidth.value = event.target?.naturalWidth || 0
   previewNaturalHeight.value = event.target?.naturalHeight || 0
-  nextTick(() => {
-    refreshZoomOverflow()
-  })
 }
 
 function syncViewport() {
   viewportWidth.value = window.innerWidth
   viewportHeight.value = window.innerHeight
-  nextTick(() => {
-    refreshZoomOverflow()
-  })
-}
-
-function refreshZoomOverflow() {
-  const stage = previewStageRef.value
-  const image = previewImageRef.value
-
-  if (!stage || !image || zoomPercent.value <= 100) {
-    isZoomOverflowing.value = false
-    isZoomOverflowingX.value = false
-    isZoomOverflowingY.value = false
-    return
-  }
-
-  const overflowX = image.offsetWidth > stage.clientWidth + 1
-  const overflowY = image.offsetHeight > stage.clientHeight + 1
-  isZoomOverflowingX.value = overflowX
-  isZoomOverflowingY.value = overflowY
-  isZoomOverflowing.value = overflowX || overflowY
 }
 
 function onPreviewMouseDown(event) {
@@ -464,9 +433,7 @@ onBeforeUnmount(() => {
         <div
           class="preview-inner"
           :class="{
-            'preview-inner--zoomed': zoomPercent > 100 && isZoomOverflowing,
-            'preview-inner--overflow-x': zoomPercent > 100 && isZoomOverflowingX,
-            'preview-inner--overflow-y': zoomPercent > 100 && isZoomOverflowingY,
+            'preview-inner--zoomed': zoomPercent > 100,
           }"
         >
           <img
@@ -605,14 +572,6 @@ onBeforeUnmount(() => {
   height: max-content;
   min-width: 100%;
   min-height: 100%;
-}
-
-.preview-inner--overflow-x {
-  justify-content: flex-start;
-}
-
-.preview-inner--overflow-y {
-  align-items: flex-start;
 }
 
 .preview-image {
