@@ -21,23 +21,25 @@ function localizeVerificationApiMessage(rawMessage, fallbackKey) {
     return t(fallbackKey)
   }
 
-  if (message === 'Email has been verified.') {
+  const normalized = message.toLowerCase().replace(/[.!]+$/g, '').trim()
+
+  if (normalized === 'email has been verified') {
     return t('Email подтверждён.')
   }
 
-  if (message === 'Email already verified.') {
+  if (normalized === 'email already verified') {
     return t('Email уже подтверждён.')
   }
 
-  if (message === 'Invalid or expired verification link.') {
+  if (normalized === 'invalid or expired verification link') {
     return t('Ссылка подтверждения неполная или устарела.')
   }
 
-  if (message === 'Invalid verification link.') {
+  if (normalized === 'invalid verification link') {
     return t('Ссылка подтверждения недействительна.')
   }
 
-  if (message === 'User not found.') {
+  if (normalized === 'user not found') {
     return t('Пользователь не найден.')
   }
 

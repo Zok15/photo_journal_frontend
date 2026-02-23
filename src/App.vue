@@ -40,15 +40,17 @@ function localizeVerificationApiMessage(rawMessage, fallbackKey) {
     return t(fallbackKey)
   }
 
-  if (message === 'Verification email has been sent.') {
+  const normalized = message.toLowerCase().replace(/[.!]+$/g, '').trim()
+
+  if (normalized === 'verification email has been sent') {
     return t('Письмо для подтверждения отправлено повторно.')
   }
 
-  if (message === 'Email already verified.') {
+  if (normalized === 'email already verified') {
     return t('Email уже подтверждён.')
   }
 
-  if (message === 'Verification email service is unavailable.') {
+  if (normalized === 'verification email service is unavailable') {
     return t('Сервис отправки писем недоступен.')
   }
 
