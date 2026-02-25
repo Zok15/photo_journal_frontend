@@ -132,7 +132,6 @@ const en = {
   'Приватная': 'Private',
   'На модерации': 'Pending moderation',
   'Отклонена': 'Rejected',
-  'Опубликована админом': 'Published by admin',
   'Серия отправлена на модерацию перед публикацией.': 'Series was sent for moderation before publishing.',
   'Модерация': 'Moderation',
   'Название обязательно.': 'Title is required.',

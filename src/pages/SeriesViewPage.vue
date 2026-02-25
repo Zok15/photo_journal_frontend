@@ -490,8 +490,7 @@ function visibilityLabel(series) {
     return t('Отклонена')
   }
   if (status === 'published') {
-    const moderation = String(series?.moderation_status || '').trim()
-    return moderation === 'manual_approved' ? t('Опубликована админом') : t('Публичная')
+    return t('Публичная')
   }
 
   return t('Приватная')
