@@ -194,7 +194,7 @@ function ensureStatusPolling() {
 }
 
 function hasPendingAutoTags() {
-  return canEditSeries.value && Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
+  return Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
 }
 
 function stopTagsPolling() {
