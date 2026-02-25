@@ -73,6 +73,8 @@ const en = {
   'От': 'From',
   'До': 'To',
   'Сортировка': 'Sort',
+  'По дате добавления': 'By added date',
+  'По дате съёмки': 'By taken date',
   'Новые': 'Newest',
   'Старые': 'Oldest',
   'Сбросить фильтры': 'Reset filters',

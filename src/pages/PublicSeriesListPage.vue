@@ -474,7 +474,7 @@ function collapseTagRows() {
 }
 
 function normalizeSort(value) {
-  return value === 'old' ? 'old' : 'new'
+  return ['new', 'old', 'taken_new', 'taken_old'].includes(value) ? value : 'new'
 }
 
 function parseTagQuery(value) {
@@ -721,10 +721,20 @@ watch([availableTags, visibleTagRows], async () => {
           <section class="filter-group">
             <h3>{{ t('Сортировка') }}</h3>
             <div class="chip-row">
+              <span class="sort-group-label">{{ t('По дате добавления') }}</span>
               <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'; loadPublicSeries(1)">
                 {{ t('Новые') }}
               </button>
               <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'; loadPublicSeries(1)">
+                {{ t('Старые') }}
+              </button>
+            </div>
+            <div class="chip-row sort-row-secondary">
+              <span class="sort-group-label">{{ t('По дате съёмки') }}</span>
+              <button type="button" class="chip" :class="{ active: activeSort === 'taken_new' }" @click="activeSort = 'taken_new'; loadPublicSeries(1)">
+                {{ t('Новые') }}
+              </button>
+              <button type="button" class="chip" :class="{ active: activeSort === 'taken_old' }" @click="activeSort = 'taken_old'; loadPublicSeries(1)">
                 {{ t('Старые') }}
               </button>
             </div>
@@ -1011,6 +1021,16 @@ watch([availableTags, visibleTagRows], async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.sort-row-secondary {
+  margin-top: 8px;
+}
+
+.sort-group-label {
+  width: 100%;
+  font-size: 12px;
+  color: #71807a;
 }
 
 .tags-cloud-shell {

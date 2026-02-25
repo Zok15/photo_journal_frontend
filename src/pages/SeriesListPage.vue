@@ -274,7 +274,7 @@ function applyRouteQuery(query) {
     search.value = nextSearch
     searchInput.value = nextSearch
 
-    const nextSort = typeof query.sort === 'string' && ['new', 'old'].includes(query.sort) ? query.sort : 'new'
+    const nextSort = typeof query.sort === 'string' && ['new', 'old', 'taken_new', 'taken_old'].includes(query.sort) ? query.sort : 'new'
     activeSort.value = nextSort
 
     const tags = typeof query.tag === 'string'
@@ -1492,11 +1492,21 @@ function toggleMobileFilters() {
 
           <section class="filter-group">
             <h3>{{ t('Сортировка') }}</h3>
-            <div class="chip-row">
+            <div class="chip-row chip-row-wrap">
+              <span class="sort-group-label">{{ t('По дате добавления') }}</span>
               <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'">
                 {{ t('Новые') }}
               </button>
               <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'">
+                {{ t('Старые') }}
+              </button>
+            </div>
+            <div class="chip-row chip-row-wrap sort-row-secondary">
+              <span class="sort-group-label">{{ t('По дате съёмки') }}</span>
+              <button type="button" class="chip" :class="{ active: activeSort === 'taken_new' }" @click="activeSort = 'taken_new'">
+                {{ t('Новые') }}
+              </button>
+              <button type="button" class="chip" :class="{ active: activeSort === 'taken_old' }" @click="activeSort = 'taken_old'">
                 {{ t('Старые') }}
               </button>
             </div>
@@ -1745,6 +1755,20 @@ function toggleMobileFilters() {
 .chip-row {
   display: flex;
   gap: 8px;
+}
+
+.chip-row-wrap {
+  flex-wrap: wrap;
+}
+
+.sort-row-secondary {
+  margin-top: 10px;
+}
+
+.sort-group-label {
+  width: 100%;
+  font-size: 12px;
+  color: #718179;
 }
 
 .filter-row {
