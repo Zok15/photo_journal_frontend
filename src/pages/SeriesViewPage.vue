@@ -228,7 +228,7 @@ async function pollSeriesTagsTick() {
   tagsPollAttempts += 1
 
   try {
-    const loaded = await loadSeries({ silent: true, includePhotos: false })
+    const loaded = await loadSeries({ silent: true, includePhotos: true })
     if (!hasPendingAutoTags() || tagsPollAttempts >= TAGS_POLL_MAX_ATTEMPTS) {
       return
     }
