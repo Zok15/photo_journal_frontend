@@ -67,9 +67,15 @@ let tagSuggestRequestId = 0
 let previewRatioRequestId = 0
 let statusPollTimerId = null
 let statusPollInFlight = false
+let tagsPollTimerId = null
+let tagsPollInFlight = false
+let tagsPollAttempts = 0
 
 const STATUS_POLL_INTERVAL_MS = 5000
 const STATUS_POLL_RETRY_MS = 9000
+const TAGS_POLL_INTERVAL_MS = 3500
+const TAGS_POLL_RETRY_MS = 7000
+const TAGS_POLL_MAX_ATTEMPTS = 20
 const PHOTO_UPLOAD_CHUNK_SIZE = 3
 
 const selectedPhoto = ref(null)
@@ -185,6 +191,70 @@ function ensureStatusPolling() {
   }
 
   scheduleStatusPoll(STATUS_POLL_INTERVAL_MS)
+}
+
+function hasPendingAutoTags() {
+  return canEditSeries.value && Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
+}
+
+function stopTagsPolling() {
+  if (tagsPollTimerId !== null) {
+    clearTimeout(tagsPollTimerId)
+    tagsPollTimerId = null
+  }
+  tagsPollInFlight = false
+  tagsPollAttempts = 0
+}
+
+function scheduleTagsPoll(delayMs) {
+  if (tagsPollTimerId !== null) {
+    clearTimeout(tagsPollTimerId)
+  }
+  tagsPollTimerId = window.setTimeout(pollSeriesTagsTick, delayMs)
+}
+
+async function pollSeriesTagsTick() {
+  tagsPollTimerId = null
+  if (tagsPollInFlight) {
+    return
+  }
+
+  tagsPollInFlight = true
+  if (!hasPendingAutoTags() || tagsPollAttempts >= TAGS_POLL_MAX_ATTEMPTS) {
+    tagsPollInFlight = false
+    return
+  }
+
+  tagsPollAttempts += 1
+
+  try {
+    const loaded = await loadSeries({ silent: true, includePhotos: false })
+    if (!hasPendingAutoTags() || tagsPollAttempts >= TAGS_POLL_MAX_ATTEMPTS) {
+      return
+    }
+
+    const nextDelay = loaded ? TAGS_POLL_INTERVAL_MS : TAGS_POLL_RETRY_MS
+    scheduleTagsPoll(nextDelay)
+  } finally {
+    tagsPollInFlight = false
+  }
+}
+
+function ensureTagsPolling() {
+  if (!hasPendingAutoTags()) {
+    stopTagsPolling()
+    return
+  }
+
+  if (tagsPollAttempts >= TAGS_POLL_MAX_ATTEMPTS) {
+    return
+  }
+
+  if (tagsPollTimerId !== null || tagsPollInFlight) {
+    return
+  }
+
+  scheduleTagsPoll(TAGS_POLL_INTERVAL_MS)
 }
 
 function currentSeriesKey() {
@@ -974,7 +1044,9 @@ async function fetchTagSuggestions() {
 async function loadSeries(options = {}) {
   const silent = Boolean(options?.silent)
   const statusOnly = Boolean(options?.statusOnly)
-  const includePhotos = !statusOnly
+  const includePhotos = typeof options?.includePhotos === 'boolean'
+    ? options.includePhotos
+    : !statusOnly
   let loaded = false
 
   if (!silent) {
@@ -1021,6 +1093,7 @@ async function loadSeries(options = {}) {
     item.value = mergeSeriesPayload(data?.data || null)
     loaded = true
     ensureStatusPolling()
+    ensureTagsPolling()
     const canonical = seriesPath(item.value)
     if (canonical !== route.path) {
       router.replace(canonical).catch(() => {})
@@ -1087,6 +1160,7 @@ onBeforeUnmount(() => {
   previewResizeObserver?.disconnect()
   previewResizeObserver = null
   stopStatusPolling()
+  stopTagsPolling()
   if (tagSuggestTimerId !== null) {
     clearTimeout(tagSuggestTimerId)
     tagSuggestTimerId = null
@@ -1095,6 +1169,7 @@ onBeforeUnmount(() => {
 
 watch(() => route.params.slug, () => {
   stopStatusPolling()
+  stopTagsPolling()
   closePreview()
   loadProfileMeta().finally(() => {
     loadSeries()
