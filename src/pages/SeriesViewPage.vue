@@ -50,6 +50,9 @@ const suppressPreviewOpen = ref(false)
 const refreshingTags = ref(false)
 const refreshTagsError = ref('')
 const refreshTagsInfo = ref('')
+const adminPublishError = ref('')
+const adminPublishInfo = ref('')
+const publishingByAdmin = ref(false)
 const newTagName = ref('')
 const addingTag = ref(false)
 const removingTagId = ref(null)
@@ -112,6 +115,14 @@ const seriesTags = computed(() => {
 })
 const showPendingTagsHint = computed(() => {
   return Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
+})
+const canAdminPublishSeries = computed(() => {
+  if (!canViewModerationTags.value) {
+    return false
+  }
+
+  const status = publicationStatus(item.value)
+  return status === 'pending_moderation' || status === 'rejected'
 })
 const moderationTags = computed(() => {
   const labels = Array.isArray(item.value?.moderation_labels) ? item.value.moderation_labels : []
@@ -977,6 +988,31 @@ async function refreshAutoTags() {
   }
 }
 
+async function adminPublishSeries() {
+  if (!canAdminPublishSeries.value) {
+    return
+  }
+
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) {
+    return
+  }
+
+  publishingByAdmin.value = true
+  adminPublishError.value = ''
+  adminPublishInfo.value = ''
+
+  try {
+    const { data } = await api.post(`/admin/series/${seriesKey}/publish`)
+    item.value = mergeSeriesPayload(data?.data || null)
+    adminPublishInfo.value = t('Серия опубликована админом.')
+  } catch (e) {
+    adminPublishError.value = e?.response?.data?.message || t('Не удалось опубликовать серию.')
+  } finally {
+    publishingByAdmin.value = false
+  }
+}
+
 async function addSeriesTag() {
   if (!canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -1276,17 +1312,49 @@ watch(previewGridRef, () => {
               </span>
             </p>
           </div>
-          <div v-if="canEditSeries" class="series-actions">
-            <button type="button" class="ghost-btn" @click="showUploadForm = !showUploadForm">
+          <div v-if="canEditSeries || canAdminPublishSeries" class="series-actions">
+            <button
+              v-if="canEditSeries"
+              type="button"
+              class="ghost-btn"
+              @click="showUploadForm = !showUploadForm"
+            >
               {{ showUploadForm ? t('Скрыть форму') : t('Добавить фото') }}
             </button>
-            <button type="button" class="ghost-btn" :disabled="refreshingTags" @click="refreshAutoTags">
+            <button
+              v-if="canEditSeries"
+              type="button"
+              class="ghost-btn"
+              :disabled="refreshingTags"
+              @click="refreshAutoTags"
+            >
               {{ refreshingTags ? t('Обновляем теги...') : t('Обновить теги') }}
             </button>
-            <button type="button" class="ghost-btn icon-btn" @click="openEditSeries" :title="t('Редактировать')">
+            <button
+              v-if="canAdminPublishSeries"
+              type="button"
+              class="ghost-btn"
+              :disabled="publishingByAdmin"
+              @click="adminPublishSeries"
+            >
+              {{ publishingByAdmin ? t('Публикуем...') : t('Опубликовать (админ)') }}
+            </button>
+            <button
+              v-if="canEditSeries"
+              type="button"
+              class="ghost-btn icon-btn"
+              @click="openEditSeries"
+              :title="t('Редактировать')"
+            >
               ✎
             </button>
-            <button type="button" class="danger-btn icon-btn" @click="openDeleteSeriesModal" :title="t('Удалить серию')">
+            <button
+              v-if="canEditSeries"
+              type="button"
+              class="danger-btn icon-btn"
+              @click="openDeleteSeriesModal"
+              :title="t('Удалить серию')"
+            >
               🗑
             </button>
           </div>
@@ -1294,6 +1362,8 @@ watch(previewGridRef, () => {
 
         <p v-if="item.description" class="series-description">{{ item.description }}</p>
         <p v-if="item.moderation_reason && publicationStatus(item) === 'rejected'" class="error">{{ item.moderation_reason }}</p>
+        <p v-if="adminPublishError" class="error">{{ adminPublishError }}</p>
+        <p v-else-if="adminPublishInfo" class="hint">{{ adminPublishInfo }}</p>
         <div class="series-tags">
           <span v-for="tag in seriesTags" :key="tag.id" class="series-tag">
             #{{ tag.name }}
