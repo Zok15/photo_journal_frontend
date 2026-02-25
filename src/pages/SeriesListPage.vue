@@ -947,6 +947,7 @@ async function createSeries() {
 
     const firstChunk = optimizedFiles.slice(0, PHOTO_UPLOAD_CHUNK_SIZE)
     const restChunks = optimizedFiles.slice(PHOTO_UPLOAD_CHUNK_SIZE)
+    const hasRestChunks = restChunks.length > 0
     const failedUploads = []
 
     const formData = new FormData()
@@ -956,6 +957,9 @@ async function createSeries() {
       formData.append('description', createDescription.value)
     }
     formData.append('is_public', createIsPublic.value ? '1' : '0')
+    if (hasRestChunks) {
+      formData.append('defer_post_upload_jobs', '1')
+    }
 
     for (const file of firstChunk) {
       formData.append('photos[]', file)
@@ -970,9 +974,13 @@ async function createSeries() {
       for (let start = 0; start < restChunks.length; start += PHOTO_UPLOAD_CHUNK_SIZE) {
         const chunk = restChunks.slice(start, start + PHOTO_UPLOAD_CHUNK_SIZE)
         const chunkFormData = new FormData()
+        const isLastChunk = start + PHOTO_UPLOAD_CHUNK_SIZE >= restChunks.length
 
         for (const file of chunk) {
           chunkFormData.append('photos[]', file)
+        }
+        if (!isLastChunk) {
+          chunkFormData.append('defer_post_upload_jobs', '1')
         }
 
         const response = await api.post(`/series/${createdSeriesKey}/photos`, chunkFormData)
