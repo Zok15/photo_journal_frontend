@@ -228,7 +228,7 @@ async function pollSeriesTagsTick() {
   tagsPollAttempts += 1
 
   try {
-    const loaded = await loadSeries({ silent: true, includePhotos: true })
+    const loaded = await loadSeriesTagsOnly()
     if (!hasPendingAutoTags() || tagsPollAttempts >= TAGS_POLL_MAX_ATTEMPTS) {
       return
     }
@@ -255,6 +255,63 @@ function ensureTagsPolling() {
   }
 
   scheduleTagsPoll(TAGS_POLL_INTERVAL_MS)
+}
+
+async function loadSeriesTagsOnly() {
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey || !item.value) {
+    return false
+  }
+
+  try {
+    let data = null
+
+    if (isAuthenticated.value) {
+      try {
+        const response = await api.get(`/series/${seriesKey}`, {
+          params: {
+            include_blocking_tags: canViewModerationTags.value ? 1 : 0,
+          },
+        })
+        data = response.data
+      } catch (e) {
+        if (e?.response?.status !== 401) {
+          throw e
+        }
+      }
+    }
+
+    if (!data) {
+      const response = await api.get(`/public/series/${seriesKey}`, {
+        params: {
+          include_blocking_tags: canViewModerationTags.value ? 1 : 0,
+        },
+      })
+      data = response.data
+    }
+
+    const next = data?.data || null
+    if (!next || !item.value) {
+      return false
+    }
+
+    item.value.tags = Array.isArray(next.tags) ? next.tags : []
+
+    if (Object.prototype.hasOwnProperty.call(next, 'photos_count')) {
+      const parsed = Number(next.photos_count)
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        item.value.photos_count = parsed
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(next, 'moderation_labels')) {
+      item.value.moderation_labels = Array.isArray(next.moderation_labels) ? next.moderation_labels : []
+    }
+
+    return true
+  } catch (_) {
+    return false
+  }
 }
 
 function currentSeriesKey() {
@@ -1087,7 +1144,7 @@ async function loadSeries(options = {}) {
       data = response.data
     }
 
-    if (includePhotos && Array.isArray(data?.data?.photos)) {
+    if (!silent && includePhotos && Array.isArray(data?.data?.photos)) {
       photoUrlVersion.value = Date.now()
     }
     item.value = mergeSeriesPayload(data?.data || null)
