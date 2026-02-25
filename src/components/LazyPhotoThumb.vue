@@ -27,9 +27,15 @@ const loaded = ref(false)
 const failed = ref(false)
 
 watch(
-  () => [props.src, props.fallbackSrc],
-  async () => {
-    currentSrc.value = props.src || props.fallbackSrc || ''
+  [() => props.src, () => props.fallbackSrc],
+  async ([nextSrc, nextFallback], [prevSrc, prevFallback]) => {
+    const resolvedNext = nextSrc || nextFallback || ''
+    const resolvedPrev = prevSrc || prevFallback || ''
+    if (resolvedNext === resolvedPrev && currentSrc.value === resolvedNext) {
+      return
+    }
+
+    currentSrc.value = resolvedNext
     loaded.value = false
     failed.value = false
     await nextTick()
