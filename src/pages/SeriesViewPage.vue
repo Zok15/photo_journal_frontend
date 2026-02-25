@@ -1322,10 +1322,10 @@ watch(previewGridRef, () => {
                 <strong class="preview-card-name" :title="tile.photo.original_name || ''">{{ tile.photo.original_name }}</strong>
                 <div class="thumb-bottom">
                   <span>{{ tile.photo.mime }} · {{ formatSize(tile.photo.size) }}</span>
-                  <div class="thumb-actions">
+                  <div v-if="canEditSeries" class="thumb-actions">
                     <button type="button" class="icon-ghost-btn" :title="t('Скачать оригинал')" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
-                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
-                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
+                    <button type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
+                    <button type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
                   </div>
                 </div>
               </div>
