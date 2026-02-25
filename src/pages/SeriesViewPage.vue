@@ -104,6 +104,9 @@ const seriesTags = computed(() => {
 
   return tags.sort((a, b) => a.name.localeCompare(b.name))
 })
+const showPendingTagsHint = computed(() => {
+  return Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
+})
 const moderationTags = computed(() => {
   const labels = Array.isArray(item.value?.moderation_labels) ? item.value.moderation_labels : []
   return labels
@@ -1208,6 +1211,9 @@ watch(previewGridRef, () => {
             </button>
           </form>
         </div>
+        <p v-if="showPendingTagsHint" class="hint tags-pending-hint">
+          {{ t('Теги появятся через несколько секунд. Мы добавляем их автоматически.') }}
+        </p>
         <p v-if="canViewModerationTags && moderationTags.length" class="moderation-tags">
           <strong>{{ t('Модерация') }}:</strong>
           <span
@@ -1651,6 +1657,10 @@ watch(previewGridRef, () => {
   height: 22px;
   font-size: 11px;
   padding: 0 7px;
+}
+
+.tags-pending-hint {
+  margin: 8px 0 0;
 }
 
 .upload-panel {

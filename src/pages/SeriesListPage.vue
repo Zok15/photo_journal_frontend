@@ -497,6 +497,12 @@ function shouldShowPreviewOverflowOnTile(item, tile) {
   return Number(lastTile?.id) === Number(tile?.photo?.id)
 }
 
+function showPendingTagsHint(item) {
+  const photosCount = Number(item?.photos_count || 0)
+  const tagsCount = Array.isArray(item?.tags) ? item.tags.length : 0
+  return photosCount > 0 && tagsCount === 0
+}
+
 function extractSeriesDateKeys(items) {
   const keys = new Set()
 
@@ -1636,6 +1642,9 @@ function toggleMobileFilters() {
                   #{{ tag.name }}
                 </button>
               </div>
+              <p v-else-if="showPendingTagsHint(item)" class="hint series-card-tags-pending-hint">
+                {{ t('Теги появятся через несколько секунд. Мы добавляем их автоматически.') }}
+              </p>
 
               <div
                 v-if="canViewModerationTags && moderationTags(item).length"
@@ -2303,6 +2312,10 @@ function toggleMobileFilters() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.series-card-tags-pending-hint {
+  margin: 10px 0 0;
 }
 
 .series-card-tags--moderation {

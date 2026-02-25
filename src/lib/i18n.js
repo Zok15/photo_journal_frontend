@@ -168,6 +168,7 @@ const en = {
   'Новое название файла (расширение .{ext} менять нельзя)': 'New file name (you cannot change .{ext} extension)',
   'Теги обновлены для {processed} фото, ошибок: {failed}.': 'Tags refreshed for {processed} photos, failed: {failed}.',
   'Теги обновлены для {processed} фото.': 'Tags refreshed for {processed} photos.',
+  'Теги появятся через несколько секунд. Мы добавляем их автоматически.': 'Tags will appear in a few seconds. We add them automatically.',
   'Vision-теггер выключен (VISION_TAGGER_ENABLED=false).': 'Vision tagger is disabled (VISION_TAGGER_ENABLED=false).',
   'Vision-теггер недоступен по сети.': 'Vision tagger is not reachable.',
   'Закрыть форму': 'Close form',
