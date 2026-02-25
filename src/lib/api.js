@@ -13,6 +13,8 @@ import {
   shouldInvalidateSeriesCache,
 } from './requestCache'
 
+const TOKEN_KEY = 'pj_token'
+
 const baseURL = getApiBaseUrl()
 
 if (import.meta.env.DEV && !import.meta.env.VITE_API_BASE_URL) {
@@ -26,6 +28,19 @@ export const api = axios.create({
   },
 })
 
+function readPersistedToken() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const raw = String(window.localStorage.getItem(TOKEN_KEY) || '').trim()
+  if (!raw || raw === 'null' || raw === 'undefined') {
+    return ''
+  }
+
+  return raw
+}
+
 export function setAuthToken(token) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`
@@ -33,6 +48,9 @@ export function setAuthToken(token) {
     delete api.defaults.headers.common.Authorization
   }
 }
+
+// Ensure authorization is restored on hard refresh before first protected request.
+setAuthToken(readPersistedToken())
 
 const originalGet = api.get.bind(api)
 
@@ -112,3 +130,19 @@ api.interceptors.response.use(
     return Promise.reject(normalizeApiError(error))
   },
 )
+
+api.interceptors.request.use((config) => {
+  const persistedToken = readPersistedToken()
+  if (!persistedToken) {
+    return config
+  }
+
+  const nextConfig = { ...config }
+  nextConfig.headers = nextConfig.headers || {}
+
+  if (!nextConfig.headers.Authorization) {
+    nextConfig.headers.Authorization = `Bearer ${persistedToken}`
+  }
+
+  return nextConfig
+})
