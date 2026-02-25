@@ -400,12 +400,13 @@ const previewRows = computed(() => {
       minPerRow: 2,
       maxPerRow: 5,
       minTileWidthMobile: 180,
-      minTileWidthDesktop: 180,
+      minTileWidthDesktop: 240,
       mobileBreakPoint: 760,
       targetRowHeight: 300,
       minRowHeight: 210,
       maxRowHeight: 420,
       singleMaxHeight: 300,
+      minPreviewRatio: 0.78,
     },
   ).rows
 })
@@ -2073,17 +2074,19 @@ watch(previewGridRef, () => {
   max-width: 100%;
   display: flex;
   align-items: flex-start;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .preview-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
   box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   background: #fcfdfb;
   user-select: none;
 }
@@ -2109,6 +2112,8 @@ watch(previewGridRef, () => {
   width: 100%;
   background: #f3f6f1;
   cursor: zoom-in;
+  overflow: hidden;
+  border-radius: 10px 10px 0 0;
 }
 
 .preview-card-image {
@@ -2120,12 +2125,15 @@ watch(previewGridRef, () => {
 }
 
 .preview-card-meta {
+  position: relative;
   display: grid;
   gap: 5px;
   padding: 10px;
   font-size: 13px;
   border-top: 1px solid #e4e9e2;
   background: #fcfdfb;
+  border-radius: 0 0 10px 10px;
+  z-index: 2;
 }
 
 .preview-card-meta span {
@@ -2189,9 +2197,17 @@ watch(previewGridRef, () => {
 .photo-exif {
   display: grid;
   gap: 4px;
-  margin-top: 2px;
-  padding-top: 8px;
-  border-top: 1px dashed #d4ddd1;
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 9px 10px;
+  border: 1px solid #d3dbd0;
+  border-radius: 9px;
+  background: #f8faf6;
+  box-shadow: 0 10px 24px rgba(38, 50, 42, 0.14);
 }
 
 .photo-exif-row {
@@ -2360,6 +2376,12 @@ watch(previewGridRef, () => {
   .photo-exif-row {
     grid-template-columns: 92px minmax(0, 1fr);
     gap: 6px;
+  }
+
+  .photo-exif {
+    right: 6px;
+    max-width: calc(100vw - 24px);
+    padding: 8px 9px;
   }
 }
 </style>

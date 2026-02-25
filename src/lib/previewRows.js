@@ -131,6 +131,8 @@ export function buildPreviewRowsWithDynamicGrid(
   const minRowHeight = Number.isFinite(options.minRowHeight) ? options.minRowHeight : 210
   const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 420
   const singleMaxHeight = Number.isFinite(options.singleMaxHeight) ? options.singleMaxHeight : 300
+  const minPreviewRatio = Number.isFinite(options.minPreviewRatio) ? options.minPreviewRatio : 0.72
+  const maxPreviewRatio = Number.isFinite(options.maxPreviewRatio) ? options.maxPreviewRatio : 2.4
 
   const width = Math.max(1, Number(containerWidth) || 1)
   const minTileWidth = width <= mobileBreakPoint ? minTileWidthMobile : minTileWidthDesktop
@@ -143,7 +145,7 @@ export function buildPreviewRowsWithDynamicGrid(
   )
   const items = (Array.isArray(photos) ? photos : []).map((photo) => ({
     photo,
-    ratio: Number(aspectRatioById?.[photo?.id]) || 1,
+    ratio: Math.min(maxPreviewRatio, Math.max(minPreviewRatio, Number(aspectRatioById?.[photo?.id]) || 1)),
   }))
 
   if (!items.length) {
