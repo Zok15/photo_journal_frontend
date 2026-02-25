@@ -247,6 +247,13 @@ const en = {
   'Фотографии удобно хранить и просматривать как цельные истории с описанием и контекстом.': 'Photos are easier to store and browse as complete stories with description and context.',
   'Быстрые фильтры:': 'Quick filters:',
   'Популярные теги:': 'Popular tags:',
+  'Зарегистрируйтесь и подтвердите email, чтобы создавать серии': 'Sign up and verify your email to create series',
+  'Сейчас создавать и сохранять серии можно только после подтверждения почты.': 'Right now, you can create and save series only after email verification.',
+  'После регистрации и подтверждения email вы сможете:': 'After sign-up and email verification you will be able to:',
+  'Сохранение и редактирование ваших серий': 'Save and edit your series',
+  'Отправка серий на публикацию в галерею': 'Submit series for publication in the gallery',
+  'Управление приватностью и доступом': 'Manage privacy and access',
+  'Если аккаунт уже есть, просто войдите.': 'If you already have an account, just sign in.',
 }
 
 const messages = { en }

@@ -11,6 +11,7 @@ import { formatLocalizedTagLabel, normalizeTagValue } from '../lib/tagLabels'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 
 const signedIn = computed(() => isAuthenticated.value)
+const showCreateSeriesPrompt = ref(false)
 
 const featuredSeries = ref([])
 const featuredLoading = ref(true)
@@ -34,6 +35,20 @@ const coverImageLoaded = ref({})
 const heroGridElements = new Set()
 let heroResizeObserver = null
 let heroRefreshTimerId = null
+
+function openCreateSeriesPrompt() {
+  showCreateSeriesPrompt.value = true
+}
+
+function closeCreateSeriesPrompt() {
+  showCreateSeriesPrompt.value = false
+}
+
+function onHomeKeydown(event) {
+  if (event.key === 'Escape' && showCreateSeriesPrompt.value) {
+    closeCreateSeriesPrompt()
+  }
+}
 
 function photoUrl(photo) {
   const direct = String(photo?.preview_url || '').trim() || String(photo?.public_url || '').trim()
@@ -470,6 +485,7 @@ onMounted(() => {
   }
 
   window.addEventListener('resize', onViewportResize, { passive: true })
+  window.addEventListener('keydown', onHomeKeydown)
   onViewportResize()
   loadHeroPhotoPool()
   heroRefreshTimerId = window.setInterval(() => {
@@ -485,6 +501,7 @@ onBeforeUnmount(() => {
   }
 
   window.removeEventListener('resize', onViewportResize)
+  window.removeEventListener('keydown', onHomeKeydown)
   heroGridElements.clear()
   if (heroRefreshTimerId !== null) {
     window.clearInterval(heroRefreshTimerId)
@@ -526,8 +543,9 @@ watch(
         </p>
 
         <div class="hero-actions">
-          <RouterLink to="/public/series" class="primary-btn">{{ t('Открыть галерею') }}</RouterLink>
-          <RouterLink :to="signedIn ? '/series' : '/login'" class="ghost-btn">{{ signedIn ? t('Перейти в мой журнал') : t('Войти в журнал') }}</RouterLink>
+          <RouterLink v-if="signedIn" to="/series" class="primary-btn">{{ t('Перейти в мой журнал') }}</RouterLink>
+          <button v-else type="button" class="primary-btn" @click="openCreateSeriesPrompt">{{ t('Создать серию') }}</button>
+          <RouterLink to="/public/series" class="ghost-btn">{{ t('Открыть галерею') }}</RouterLink>
         </div>
 
         <ul class="hero-metrics">
@@ -664,6 +682,38 @@ watch(
         </article>
       </div>
     </section>
+
+    <div
+      v-if="showCreateSeriesPrompt"
+      class="auth-gate-overlay"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('Зарегистрируйтесь и подтвердите email, чтобы создавать серии')"
+      @click.self="closeCreateSeriesPrompt"
+    >
+      <div class="auth-gate-modal">
+        <button type="button" class="auth-gate-close" :aria-label="t('Отмена')" @click="closeCreateSeriesPrompt">×</button>
+        <h2>{{ t('Зарегистрируйтесь и подтвердите email, чтобы создавать серии') }}</h2>
+        <p>{{ t('Сейчас создавать и сохранять серии можно только после подтверждения почты.') }}</p>
+
+        <p class="auth-gate-subtitle">{{ t('После регистрации и подтверждения email вы сможете:') }}</p>
+        <ul class="auth-gate-benefits">
+          <li>{{ t('Сохранение и редактирование ваших серий') }}</li>
+          <li>{{ t('Отправка серий на публикацию в галерею') }}</li>
+          <li>{{ t('Управление приватностью и доступом') }}</li>
+        </ul>
+        <p class="auth-gate-note">{{ t('Если аккаунт уже есть, просто войдите.') }}</p>
+
+        <div class="auth-gate-actions">
+          <RouterLink class="primary-btn" :to="{ path: '/register', query: { redirect: '/series' } }" @click="closeCreateSeriesPrompt">
+            {{ t('Зарегистрироваться') }}
+          </RouterLink>
+          <RouterLink class="ghost-btn" :to="{ path: '/login', query: { redirect: '/series' } }" @click="closeCreateSeriesPrompt">
+            {{ t('Войти') }}
+          </RouterLink>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -739,6 +789,102 @@ watch(
 .hero-actions :deep(.ghost-btn) {
   display: inline-flex;
   align-items: center;
+  border: 1px solid #cad8cb;
+  background: rgba(240, 245, 239, 0.85);
+  color: #2f5642;
+}
+
+.hero-actions button.ghost-btn {
+  cursor: pointer;
+  font: inherit;
+}
+
+.hero-actions button.primary-btn {
+  cursor: pointer;
+  font: inherit;
+}
+
+.auth-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(28, 36, 31, 0.44);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.auth-gate-modal {
+  position: relative;
+  width: min(540px, 100%);
+  border: 1px solid #cdd8ce;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #f8fbf6 0%, #eef4eb 100%);
+  box-shadow: 0 26px 52px rgba(36, 48, 40, 0.22);
+  padding: 22px 20px 20px;
+  color: #243128;
+}
+
+.auth-gate-close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  border: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(199, 214, 202, 0.7);
+  color: #2f4036;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.auth-gate-modal h2 {
+  margin: 0;
+  padding-right: 28px;
+  font-size: clamp(24px, 3vw, 31px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+}
+
+.auth-gate-modal p {
+  margin: 10px 0 0;
+  color: #3e5145;
+  line-height: 1.46;
+}
+
+.auth-gate-subtitle {
+  margin-top: 14px;
+  font-weight: 700;
+  color: #2e4135;
+}
+
+.auth-gate-benefits {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #3e5145;
+  display: grid;
+  gap: 6px;
+}
+
+.auth-gate-note {
+  margin-top: 10px;
+  color: #4d5f54;
+}
+
+.auth-gate-actions {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.auth-gate-actions :deep(.primary-btn),
+.auth-gate-actions :deep(.ghost-btn) {
+  text-decoration: none;
+  padding: 10px 13px;
+  border-radius: 10px;
 }
 
 .hero-metrics {
@@ -1133,6 +1279,10 @@ watch(
 
   .showcase-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-gate-modal {
+    padding: 18px 14px 14px;
   }
 }
 
