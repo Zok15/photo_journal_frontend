@@ -210,7 +210,8 @@ export function buildPreviewRowsWithDynamicGrid(
         outOfRangePenalty += Math.abs(rowHeight - clampedHeight) * 6
       }
       if (minWidthInRow < minTileWidth) {
-        outOfRangePenalty += (minTileWidth - minWidthInRow) * 10
+        // Keep controls in one line on narrow portrait previews.
+        outOfRangePenalty += (minTileWidth - minWidthInRow) * 1200
       }
 
       rows.push({
@@ -238,6 +239,19 @@ export function buildPreviewRowsWithDynamicGrid(
       let count = Math.min(dynamicMaxPerRow, remaining)
 
       if (remaining === count + 1 && count > minPerRow) {
+        count -= 1
+      }
+
+      // Reduce cards in row until the narrowest tile can satisfy min width.
+      while (count > minPerRow) {
+        const candidate = items.slice(cursor, cursor + count)
+        const ratioSum = candidate.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
+        const minRatio = candidate.reduce((min, item) => Math.min(min, item.ratio), Number.POSITIVE_INFINITY)
+        const rowWidth = width - previewGap * (candidate.length - 1)
+        const rowHeight = Math.min(maxRowHeight, rowWidth / ratioSum)
+        if (minRatio * rowHeight >= minTileWidth) {
+          break
+        }
         count -= 1
       }
 

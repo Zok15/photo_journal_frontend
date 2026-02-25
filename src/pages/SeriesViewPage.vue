@@ -2243,7 +2243,7 @@ watch(previewGridRef, () => {
 
 .thumb-actions {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   flex: 0 0 auto;
   justify-self: end;
