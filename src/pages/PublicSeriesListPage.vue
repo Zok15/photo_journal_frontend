@@ -21,6 +21,7 @@ const previewVersion = ref(Date.now())
 const searchInput = ref('')
 const search = ref('')
 const activeSort = ref('new')
+const dateField = ref('added')
 const selectedTags = ref([])
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -52,6 +53,7 @@ const hasActiveFilters = computed(() => {
       || dateFrom.value
       || dateTo.value
       || selectedAuthorId.value
+      || dateField.value !== 'added'
       || activeSort.value !== 'new',
   )
 })
@@ -257,6 +259,7 @@ function resetFilters() {
   search.value = ''
   searchInput.value = ''
   activeSort.value = 'new'
+  dateField.value = 'added'
   selectedTags.value = []
   dateFrom.value = ''
   dateTo.value = ''
@@ -373,6 +376,9 @@ async function loadPublicSeries(targetPage = 1) {
 
     if (dateTo.value) {
       params.date_to = dateTo.value
+    }
+    if (dateField.value !== 'added') {
+      params.date_field = dateField.value
     }
 
     if (activeSort.value !== 'new') {
@@ -495,6 +501,9 @@ function applyFiltersFromQuery(query = {}) {
   search.value = String(query.search || '').trim()
   searchInput.value = search.value
   activeSort.value = normalizeSort(String(query.sort || '').trim())
+  dateField.value = ['added', 'taken'].includes(String(query.date_field || '').trim())
+    ? String(query.date_field || '').trim()
+    : 'added'
   selectedTags.value = parseTagQuery(query.tag)
   dateFrom.value = String(query.date_from || '').trim()
   dateTo.value = String(query.date_to || '').trim()
@@ -668,6 +677,14 @@ watch([availableTags, visibleTagRows], async () => {
 
           <section class="filter-group">
             <h3>{{ t('Дата') }}</h3>
+            <div class="chip-row">
+              <button type="button" class="chip" :class="{ active: dateField === 'added' }" @click="dateField = 'added'; loadPublicSeries(1)">
+                {{ t('Дата добавления') }}
+              </button>
+              <button type="button" class="chip" :class="{ active: dateField === 'taken' }" @click="dateField = 'taken'; loadPublicSeries(1)">
+                {{ t('Дата съёмки') }}
+              </button>
+            </div>
             <label class="date-label">
               {{ t('От') }}
               <input v-model="dateFrom" type="date" @change="loadPublicSeries(1)" />

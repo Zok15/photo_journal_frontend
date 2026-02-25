@@ -49,6 +49,7 @@ const search = ref('')
 const searchInput = ref('')
 const activeSort = ref('new')
 const selectedTags = ref([])
+const dateField = ref('added')
 const dateFrom = ref('')
 const dateTo = ref('')
 const selectedCalendarDate = ref('')
@@ -255,6 +256,9 @@ function buildQueryState() {
     if (dateFrom.value) query.date_from = dateFrom.value
     if (dateTo.value) query.date_to = dateTo.value
   }
+  if (dateField.value !== 'added') {
+    query.date_field = dateField.value
+  }
 
   if (activeSort.value !== 'new') {
     query.sort = activeSort.value
@@ -276,6 +280,8 @@ function applyRouteQuery(query) {
 
     const nextSort = typeof query.sort === 'string' && ['new', 'old', 'taken_new', 'taken_old'].includes(query.sort) ? query.sort : 'new'
     activeSort.value = nextSort
+    const nextDateField = typeof query.date_field === 'string' && ['added', 'taken'].includes(query.date_field) ? query.date_field : 'added'
+    dateField.value = nextDateField
 
     const tags = typeof query.tag === 'string'
       ? query.tag.split(',').map((item) => item.trim()).filter(Boolean)
@@ -1031,6 +1037,9 @@ async function loadSeries(targetPage = 1, options = {}) {
       if (dateFrom.value) params.date_from = dateFrom.value
       if (dateTo.value) params.date_to = dateTo.value
     }
+    if (dateField.value !== 'added') {
+      params.date_field = dateField.value
+    }
 
     if (activeSort.value !== 'new') {
       params.sort = activeSort.value
@@ -1228,7 +1237,7 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
-watch([search, selectedTags, dateFrom, dateTo, selectedCalendarDate, activeSort], () => {
+watch([search, selectedTags, dateField, dateFrom, dateTo, selectedCalendarDate, activeSort], () => {
   if (syncingQueryState.value) {
     return
   }
@@ -1296,6 +1305,14 @@ function toggleMobileFilters() {
 
           <section class="filter-group">
             <h3>{{ t('Дата') }}</h3>
+            <div class="chip-row filter-row">
+              <button type="button" class="chip" :class="{ active: dateField === 'added' }" @click="dateField = 'added'">
+                {{ t('Дата добавления') }}
+              </button>
+              <button type="button" class="chip" :class="{ active: dateField === 'taken' }" @click="dateField = 'taken'">
+                {{ t('Дата съёмки') }}
+              </button>
+            </div>
             <div class="filter-row filter-range">
               <label class="filter-label">
                 <span>{{ t('От') }}</span>

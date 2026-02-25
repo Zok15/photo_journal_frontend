@@ -70,6 +70,8 @@ const en = {
   'Все авторы': 'All authors',
   'Теги': 'Tags',
   'Дата': 'Date',
+  'Дата добавления': 'Added date',
+  'Дата съёмки': 'Taken date',
   'От': 'From',
   'До': 'To',
   'Сортировка': 'Sort',
