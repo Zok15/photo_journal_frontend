@@ -28,6 +28,59 @@ function readImage(file) {
   })
 }
 
+async function hasEmbeddedExif(file) {
+  try {
+    const headSize = Math.min(file.size, 256 * 1024)
+    const buffer = await file.slice(0, headSize).arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+
+    // JPEG SOI marker
+    if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) {
+      return false
+    }
+
+    let offset = 2
+    while (offset + 4 <= bytes.length) {
+      if (bytes[offset] !== 0xFF) {
+        break
+      }
+
+      const marker = bytes[offset + 1]
+      // Start of Scan / End of Image
+      if (marker === 0xDA || marker === 0xD9) {
+        break
+      }
+
+      const segmentLength = (bytes[offset + 2] << 8) + bytes[offset + 3]
+      if (segmentLength < 2 || offset + 2 + segmentLength > bytes.length) {
+        break
+      }
+
+      // APP1 segment with "Exif\0\0"
+      if (marker === 0xE1) {
+        const payloadStart = offset + 4
+        const hasExifHeader =
+          bytes[payloadStart] === 0x45 && // E
+          bytes[payloadStart + 1] === 0x78 && // x
+          bytes[payloadStart + 2] === 0x69 && // i
+          bytes[payloadStart + 3] === 0x66 && // f
+          bytes[payloadStart + 4] === 0x00 &&
+          bytes[payloadStart + 5] === 0x00
+
+        if (hasExifHeader) {
+          return true
+        }
+      }
+
+      offset += 2 + segmentLength
+    }
+  } catch (_) {
+    return false
+  }
+
+  return false
+}
+
 function canvasToBlob(canvas, mime, quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -68,6 +121,12 @@ export async function optimizeImagesForUpload(files, options = {}) {
 
   for (const file of files) {
     try {
+      const keepOriginalForMetadata = await hasEmbeddedExif(file)
+      if (keepOriginalForMetadata) {
+        optimized.push(file)
+        continue
+      }
+
       const image = await readImage(file)
 
       const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight))
