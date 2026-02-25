@@ -632,6 +632,27 @@ function toggleExif(photo, event) {
   }
 }
 
+function closeAllExifPanels() {
+  if (!Object.keys(openExifByPhotoId.value || {}).length) {
+    return
+  }
+
+  openExifByPhotoId.value = {}
+}
+
+function onDocumentPointerDown(event) {
+  const target = event?.target
+  if (!(target instanceof Element)) {
+    return
+  }
+
+  if (target.closest('.photo-exif') || target.closest('.exif-btn')) {
+    return
+  }
+
+  closeAllExifPanels()
+}
+
 function onUploadFilesChanged(event) {
   const files = Array.from(event.target.files || [])
   const invalid = findInvalidUploadIssue(files)
@@ -1420,6 +1441,7 @@ onMounted(() => {
   syncPreviewGridObserver()
 
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('pointerdown', onDocumentPointerDown)
   loadProfileMeta().finally(() => {
     loadSeries()
   })
@@ -1427,6 +1449,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('pointerdown', onDocumentPointerDown)
   previewResizeObserver?.disconnect()
   previewResizeObserver = null
   stopStatusPolling()
@@ -2131,8 +2154,7 @@ watch(previewGridRef, () => {
   max-width: 100%;
   display: flex;
   align-items: flex-start;
-  overflow-x: hidden;
-  overflow-y: visible;
+  overflow: visible;
 }
 
 .preview-card {
