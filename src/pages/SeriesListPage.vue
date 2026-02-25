@@ -935,7 +935,8 @@ async function createSeries() {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(createFiles.value, {
       maxBytes: 2 * 1024 * 1024,
       maxDimension: 3840,
-      fallbackToOriginal: true,
+      fallbackToOriginal: false,
+      preserveExifOriginal: false,
     })
 
     createWarnings.value = warnings

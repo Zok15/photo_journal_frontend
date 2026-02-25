@@ -987,7 +987,8 @@ async function uploadPhotos() {
     const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(uploadFiles.value, {
       maxBytes: 2 * 1024 * 1024,
       maxDimension: 3840,
-      fallbackToOriginal: true,
+      fallbackToOriginal: false,
+      preserveExifOriginal: false,
     })
 
     uploadWarnings.value = warnings

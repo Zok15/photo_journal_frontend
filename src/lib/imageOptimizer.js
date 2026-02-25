@@ -116,12 +116,13 @@ export async function optimizeImagesForUpload(files, options = {}) {
   const maxDimension = options.maxDimension ?? 2560
   const minDimension = options.minDimension ?? 900
   const fallbackToOriginal = options.fallbackToOriginal ?? true
+  const preserveExifOriginal = options.preserveExifOriginal ?? false
   const warnings = []
   const optimized = []
 
   for (const file of files) {
     try {
-      const keepOriginalForMetadata = await hasEmbeddedExif(file)
+      const keepOriginalForMetadata = preserveExifOriginal ? await hasEmbeddedExif(file) : false
       if (keepOriginalForMetadata) {
         optimized.push(file)
         continue
