@@ -557,6 +557,7 @@ async function saveSeries() {
     if (publicationStatus(updated) === 'pending_moderation') {
       editInfo.value = t('Серия отправлена на модерацию перед публикацией.')
     }
+    ensureStatusPolling()
     isEditingSeries.value = false
   } catch (e) {
     editError.value = formatValidationError(e)
@@ -1303,6 +1304,7 @@ watch(previewGridRef, () => {
             <h1>{{ item.title }}</h1>
             <p class="series-meta">
               {{ formatDate(item.created_at) }} · {{ item.photos_count }} {{ t('фото') }}
+              <span v-if="item.taken_at">{{ t('Съёмка') }}: {{ formatDate(item.taken_at) }}</span>
               <span
                 class="series-visibility"
                 :class="visibilityClass(item)"

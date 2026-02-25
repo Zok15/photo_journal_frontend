@@ -1606,6 +1606,7 @@ function toggleMobileFilters() {
 
               <div class="series-meta">
                 <span>{{ formatDate(item.created_at) }}</span>
+                <span v-if="item.taken_at">{{ t('Съёмка') }}: {{ formatDate(item.taken_at) }}</span>
                 <span>{{ item.photos_count }} {{ t('фото') }}</span>
                 <span
                   class="series-visibility"
