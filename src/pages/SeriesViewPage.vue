@@ -65,6 +65,7 @@ const previewGridWidth = ref(0)
 const previewAspectRatios = ref({})
 const previewGridRef = ref(null)
 const openExifByPhotoId = ref({})
+const exifPlacementByPhotoId = ref({})
 let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
@@ -577,13 +578,54 @@ function isExifOpen(photo) {
   return Boolean(openExifByPhotoId.value[photoId])
 }
 
-function toggleExif(photo) {
+function exifPlacement(photo) {
+  const photoId = Number(photo?.id || 0)
+  if (!photoId) {
+    return 'down'
+  }
+
+  return exifPlacementByPhotoId.value[photoId] === 'up' ? 'up' : 'down'
+}
+
+function updateExifPlacement(photo, event) {
+  const photoId = Number(photo?.id || 0)
+  if (!photoId) {
+    return
+  }
+
+  const target = event?.currentTarget
+  if (!target || typeof target.getBoundingClientRect !== 'function') {
+    exifPlacementByPhotoId.value = {
+      ...exifPlacementByPhotoId.value,
+      [photoId]: 'down',
+    }
+    return
+  }
+
+  const rect = target.getBoundingClientRect()
+  const rows = exifRowsForPhoto(photo).length
+  const estimatedHeight = Math.min(360, Math.max(120, 20 + rows * 24))
+  const viewportHeight = window.innerHeight || 0
+  const spaceBelow = Math.max(0, viewportHeight - rect.bottom - 10)
+  const spaceAbove = Math.max(0, rect.top - 10)
+  const direction = (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) ? 'down' : 'up'
+
+  exifPlacementByPhotoId.value = {
+    ...exifPlacementByPhotoId.value,
+    [photoId]: direction,
+  }
+}
+
+function toggleExif(photo, event) {
   const photoId = Number(photo?.id || 0)
   if (!photoId) {
     return
   }
 
   const current = Boolean(openExifByPhotoId.value[photoId])
+  if (!current) {
+    updateExifPlacement(photo, event)
+  }
   openExifByPhotoId.value = {
     ...openExifByPhotoId.value,
     [photoId]: !current,
@@ -761,6 +803,9 @@ function onPhotoDragStart(photo, event) {
   }
 
   if (reorderingPhotos.value) {
+    return
+  }
+  if (isExifOpen(photo)) {
     return
   }
 
@@ -1396,6 +1441,7 @@ watch(() => route.params.slug, () => {
   stopStatusPolling()
   stopTagsPolling()
   openExifByPhotoId.value = {}
+  exifPlacementByPhotoId.value = {}
   closePreview()
   loadProfileMeta().finally(() => {
     loadSeries()
@@ -1640,7 +1686,7 @@ watch(previewGridRef, () => {
                 'preview-card--drag-over': dragOverPhotoId === tile.photo.id,
               }"
               :style="{ width: `${tile.width}px` }"
-              :draggable="canEditSeries"
+              :draggable="canEditSeries && !isExifOpen(tile.photo)"
               @dragstart="onPhotoDragStart(tile.photo, $event)"
               @dragenter.prevent="onPhotoDragEnter(tile.photo)"
               @dragover.prevent
@@ -1670,7 +1716,7 @@ watch(previewGridRef, () => {
                       type="button"
                       class="icon-ghost-btn exif-btn"
                       :title="t('Показать EXIF')"
-                      @click.stop="toggleExif(tile.photo)"
+                      @click.stop="toggleExif(tile.photo, $event)"
                     >
                       {{ isExifOpen(tile.photo) ? t('EXIF −') : t('EXIF') }}
                     </button>
@@ -1679,7 +1725,18 @@ watch(previewGridRef, () => {
                     <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
                   </div>
                 </div>
-                <div v-if="isExifOpen(tile.photo)" class="photo-exif">
+                <div
+                  v-if="isExifOpen(tile.photo)"
+                  class="photo-exif"
+                  :class="{
+                    'photo-exif--up': exifPlacement(tile.photo) === 'up',
+                    'photo-exif--down': exifPlacement(tile.photo) === 'down',
+                  }"
+                  draggable="false"
+                  @click.stop
+                  @mousedown.stop.prevent
+                  @dragstart.stop.prevent
+                >
                   <div v-for="row in exifRowsForPhoto(tile.photo)" :key="`${tile.photo.id}-${row.key}`" class="photo-exif-row">
                     <span class="photo-exif-label">{{ row.label }}</span>
                     <span class="photo-exif-value">{{ row.value }}</span>
@@ -2199,7 +2256,6 @@ watch(previewGridRef, () => {
   gap: 4px;
   position: absolute;
   right: 8px;
-  bottom: calc(100% + 6px);
   z-index: 40;
   width: max-content;
   max-width: min(420px, calc(100vw - 36px));
@@ -2208,6 +2264,14 @@ watch(previewGridRef, () => {
   border-radius: 9px;
   background: #f8faf6;
   box-shadow: 0 10px 24px rgba(38, 50, 42, 0.14);
+}
+
+.photo-exif--up {
+  bottom: calc(100% + 6px);
+}
+
+.photo-exif--down {
+  top: calc(100% + 6px);
 }
 
 .photo-exif-row {
