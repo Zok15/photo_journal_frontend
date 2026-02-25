@@ -113,6 +113,11 @@ export function shouldCacheRequest(method, url, params = null) {
     return false
   }
 
+  // status_only endpoints are used by live moderation polling and must always be fresh.
+  if (isTrueLike(params?.status_only)) {
+    return false
+  }
+
   return true
 }
 
