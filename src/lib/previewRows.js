@@ -196,17 +196,16 @@ export function buildPreviewRowsWithDynamicGrid(
       cursor += count
 
       const rowHeight = rowHeights[rowIndex]
-      const widths = chunk.map((item) => item.ratio * rowHeight)
+      const clampedHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight))
+      const widths = chunk.map((item) => item.ratio * clampedHeight)
       const minWidthInRow = widths.length ? Math.min(...widths) : 0
       const rowTotalWidth = widths.reduce((sum, tileWidth) => sum + tileWidth, 0)
       const used = rowTotalWidth + previewGap * (count - 1)
       emptySpace += Math.abs(width - used)
-      targetDeviation += Math.abs(targetRowHeight - rowHeight)
+      targetDeviation += Math.abs(targetRowHeight - clampedHeight)
 
-      if (rowHeight < minRowHeight) {
-        outOfRangePenalty += Math.abs(minRowHeight - rowHeight) * 6
-      } else if (rowHeight > maxRowHeight) {
-        outOfRangePenalty += Math.abs(rowHeight - maxRowHeight) * 6
+      if (rowHeight !== clampedHeight) {
+        outOfRangePenalty += Math.abs(rowHeight - clampedHeight) * 6
       }
       if (minWidthInRow < minTileWidth) {
         outOfRangePenalty += (minTileWidth - minWidthInRow) * 10
@@ -214,10 +213,10 @@ export function buildPreviewRowsWithDynamicGrid(
 
       rows.push({
         gap: previewGap,
-        height: rowHeight,
+        height: clampedHeight,
         tiles: chunk.map((item) => ({
           photo: item.photo,
-          width: item.ratio * rowHeight,
+          width: item.ratio * clampedHeight,
         })),
       })
     }

@@ -64,6 +64,7 @@ const photoUrlVersion = ref(0)
 const previewGridWidth = ref(0)
 const previewAspectRatios = ref({})
 const previewGridRef = ref(null)
+const openExifByPhotoId = ref({})
 let previewResizeObserver = null
 let tagSuggestTimerId = null
 let tagSuggestRequestId = 0
@@ -442,6 +443,38 @@ function formatDate(value) {
   }).format(date)
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return t('Без даты')
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return t('Без даты')
+  }
+
+  const locale = currentLocale.value === 'en' ? 'en-US' : 'ru-RU'
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function formatDecimal(value, maxFractionDigits = 2) {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) {
+    return ''
+  }
+
+  return num.toLocaleString(currentLocale.value === 'en' ? 'en-US' : 'ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits,
+  })
+}
+
 function formatSize(bytes) {
   if (!Number.isFinite(bytes)) {
     return 'n/a'
@@ -456,6 +489,104 @@ function formatSize(bytes) {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function exifRowsForPhoto(photo) {
+  const meta = photo?.metadata
+  if (!meta || typeof meta !== 'object') {
+    return []
+  }
+
+  const rows = []
+  const cameraMake = String(meta.camera_make || '').trim()
+  const cameraModel = String(meta.camera_model || '').trim()
+  const cameraName = [cameraMake, cameraModel].filter(Boolean).join(' ')
+
+  if (cameraName) {
+    rows.push({ key: 'camera', label: t('Камера'), value: cameraName })
+  }
+
+  const lensModel = String(meta.lens_model || '').trim()
+  if (lensModel) {
+    rows.push({ key: 'lens', label: t('Объектив'), value: lensModel })
+  }
+
+  if (meta.taken_at) {
+    rows.push({ key: 'taken_at', label: t('Снято'), value: formatDateTime(meta.taken_at) })
+  }
+
+  const iso = Number(meta.iso)
+  if (Number.isFinite(iso) && iso > 0) {
+    rows.push({ key: 'iso', label: t('ISO'), value: String(Math.round(iso)) })
+  }
+
+  const exposureTime = String(meta.exposure_time || '').trim()
+  if (exposureTime) {
+    rows.push({ key: 'exposure', label: t('Выдержка'), value: exposureTime })
+  }
+
+  const aperture = formatDecimal(meta.aperture, 2)
+  if (aperture) {
+    rows.push({ key: 'aperture', label: t('Диафрагма'), value: `f/${aperture}` })
+  }
+
+  const focalLength = formatDecimal(meta.focal_length_mm, 1)
+  if (focalLength) {
+    rows.push({ key: 'focal', label: t('Фокусное'), value: `${focalLength} ${t('мм')}` })
+  }
+
+  const width = Number(meta.width)
+  const height = Number(meta.height)
+  if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+    rows.push({ key: 'size', label: t('Размер'), value: `${Math.round(width)} × ${Math.round(height)} px` })
+  }
+
+  if (typeof meta.flash_fired === 'boolean') {
+    rows.push({
+      key: 'flash',
+      label: t('Вспышка'),
+      value: meta.flash_fired ? t('Сработала') : t('Не срабатывала'),
+    })
+  }
+
+  const whiteBalance = String(meta.white_balance_mode || '').trim()
+  if (whiteBalance) {
+    rows.push({ key: 'white_balance', label: t('Баланс белого'), value: whiteBalance })
+  }
+
+  const colorSpace = String(meta.color_space || '').trim()
+  if (colorSpace) {
+    rows.push({ key: 'color_space', label: t('Цветовое пространство'), value: colorSpace })
+  }
+
+  const sourceSize = Number(meta.source_file_size)
+  if (Number.isFinite(sourceSize) && sourceSize > 0) {
+    rows.push({ key: 'source_size', label: t('Размер оригинала'), value: formatSize(sourceSize) })
+  }
+
+  return rows
+}
+
+function isExifOpen(photo) {
+  const photoId = Number(photo?.id || 0)
+  if (!photoId) {
+    return false
+  }
+
+  return Boolean(openExifByPhotoId.value[photoId])
+}
+
+function toggleExif(photo) {
+  const photoId = Number(photo?.id || 0)
+  if (!photoId) {
+    return
+  }
+
+  const current = Boolean(openExifByPhotoId.value[photoId])
+  openExifByPhotoId.value = {
+    ...openExifByPhotoId.value,
+    [photoId]: !current,
+  }
 }
 
 function onUploadFilesChanged(event) {
@@ -1263,6 +1394,7 @@ onBeforeUnmount(() => {
 watch(() => route.params.slug, () => {
   stopStatusPolling()
   stopTagsPolling()
+  openExifByPhotoId.value = {}
   closePreview()
   loadProfileMeta().finally(() => {
     loadSeries()
@@ -1531,10 +1663,25 @@ watch(previewGridRef, () => {
                 <strong class="preview-card-name" :title="tile.photo.original_name || ''">{{ tile.photo.original_name }}</strong>
                 <div class="thumb-bottom">
                   <span>{{ tile.photo.mime }} · {{ formatSize(tile.photo.size) }}</span>
-                  <div v-if="canEditSeries" class="thumb-actions">
-                    <button type="button" class="icon-ghost-btn" :title="t('Скачать оригинал')" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
-                    <button type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
-                    <button type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
+                  <div class="thumb-actions">
+                    <button
+                      v-if="exifRowsForPhoto(tile.photo).length"
+                      type="button"
+                      class="icon-ghost-btn exif-btn"
+                      :title="t('Показать EXIF')"
+                      @click.stop="toggleExif(tile.photo)"
+                    >
+                      {{ isExifOpen(tile.photo) ? t('EXIF −') : t('EXIF') }}
+                    </button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Скачать оригинал')" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
+                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
+                  </div>
+                </div>
+                <div v-if="isExifOpen(tile.photo)" class="photo-exif">
+                  <div v-for="row in exifRowsForPhoto(tile.photo)" :key="`${tile.photo.id}-${row.key}`" class="photo-exif-row">
+                    <span class="photo-exif-label">{{ row.label }}</span>
+                    <span class="photo-exif-value">{{ row.value }}</span>
                   </div>
                 </div>
               </div>
@@ -1933,6 +2080,7 @@ watch(previewGridRef, () => {
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
@@ -2029,6 +2177,40 @@ watch(previewGridRef, () => {
 
 .icon-ghost-btn:hover {
   background: #e3e9e1;
+}
+
+.exif-btn {
+  min-width: 56px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.photo-exif {
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed #d4ddd1;
+}
+
+.photo-exif-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.photo-exif-label {
+  color: #71807a;
+  font-size: 11px;
+}
+
+.photo-exif-value {
+  color: #3f4f45;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .confirm-overlay {
@@ -2167,6 +2349,17 @@ watch(previewGridRef, () => {
     min-width: 26px;
     height: 24px;
     font-size: 13px;
+  }
+
+  .exif-btn {
+    min-width: 46px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .photo-exif-row {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 6px;
   }
 }
 </style>
