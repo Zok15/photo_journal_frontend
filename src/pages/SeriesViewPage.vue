@@ -398,16 +398,21 @@ const previewRows = computed(() => {
     previewAspectRatios.value,
     {
       gap: 10,
-      minPerRow: 2,
-      maxPerRow: 5,
-      minTileWidthMobile: 180,
-      minTileWidthDesktop: 240,
+      minPerRow: 3,
+      maxPerRow: 6,
+      preferredPerRow: 4,
+      mobileMinPerRow: 1,
+      mobileMaxPerRow: 2,
+      minTileWidthMobile: 200,
+      minTileWidthDesktop: 260,
+      maxTileWidthMobile: 340,
+      maxTileWidthDesktop: 420,
       mobileBreakPoint: 760,
       targetRowHeight: 300,
       minRowHeight: 210,
       maxRowHeight: 420,
       singleMaxHeight: 300,
-      minPreviewRatio: 0.78,
+      stretchLastRow: false,
     },
   ).rows
 })
@@ -2147,7 +2152,7 @@ watch(previewGridRef, () => {
   display: grid;
   row-gap: 12px;
   margin-top: 8px;
-  overflow-x: hidden;
+  overflow: visible;
 }
 
 .preview-row {
@@ -2200,7 +2205,7 @@ watch(previewGridRef, () => {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   --thumb-min-height: 0px;
 }
 
@@ -2414,11 +2419,13 @@ watch(previewGridRef, () => {
   }
 
   .preview-grid {
+    width: 100%;
     row-gap: 10px;
     margin-top: 6px;
   }
 
   .preview-row {
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr;
     row-gap: 10px;
