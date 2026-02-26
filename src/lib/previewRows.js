@@ -495,33 +495,41 @@ export function buildPreviewRowsWithDynamicGrid(
 
     const chunk = items.slice(cursor, cursor + chosenCount)
     const isSingleRowTile = chosenCount === 1
+    const isTwoTailTiles = chosenCount === 2
     const isLastRow = cursor + chosenCount >= items.length
     const gap = isSingleRowTile ? 0 : previewGap
     const fittedHeight = getFittedRowHeight(chunk, gap)
 
     let rowHeight = fittedHeight
     if (isLastRow) {
-      const averageHeight = fullRowHeights.length
-        ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
-        : targetRowHeight
-      const desiredTailHeight = stretchLastRow
-        ? fittedHeight
-        : Math.min(fittedHeight, averageHeight)
-
-      rowHeight = clampRowHeights
-        ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
-        : desiredTailHeight
-
-      if (isSingleRowTile) {
-        const ratio = chunk[0]?.ratio || 1
+      const isCompactTail = isSingleRowTile || isTwoTailTiles
+      if (isCompactTail) {
         const averageTileWidth = laidOutTileCount > 0
           ? (laidOutTileWidthSum / laidOutTileCount)
           : Math.min(maxTileWidth, width)
-        const targetTileWidth = Math.min(
+        const targetAverageTileWidth = Math.min(
           Math.max(minTileWidth, averageTileWidth),
           maxTileWidth,
         )
-        rowHeight = Math.max(1, Math.min(width, targetTileWidth)) / ratio
+        const tailRatioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
+        const tailMeanRatio = tailRatioSum / chunk.length
+        const minTailRatio = chunk.reduce((min, item) => Math.min(min, item.ratio), Number.POSITIVE_INFINITY)
+        const maxTailRatio = chunk.reduce((max, item) => Math.max(max, item.ratio), 0)
+        const minAllowedHeight = minTileWidth / (Number.isFinite(minTailRatio) && minTailRatio > 0 ? minTailRatio : 1)
+        const maxAllowedHeight = maxTileWidth / (maxTailRatio > 0 ? maxTailRatio : 1)
+        const preferredHeight = targetAverageTileWidth / (tailMeanRatio > 0 ? tailMeanRatio : 1)
+        rowHeight = Math.max(minAllowedHeight, Math.min(maxAllowedHeight, preferredHeight))
+      } else {
+        const averageHeight = fullRowHeights.length
+          ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
+          : targetRowHeight
+        const desiredTailHeight = stretchLastRow
+          ? fittedHeight
+          : Math.min(fittedHeight, averageHeight)
+
+        rowHeight = clampRowHeights
+          ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
+          : desiredTailHeight
       }
     } else {
       fullRowHeights.push(rowHeight)
