@@ -36,7 +36,7 @@ const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const previewGridElements = new Map()
 const showMobileFilters = ref(false)
-const MOBILE_PREVIEW_BREAKPOINT = 960
+const MOBILE_PREVIEW_BREAKPOINT = 1100
 const MOBILE_MAX_PREVIEW_TILES = 8
 const isMobilePreviewViewport = ref(
   typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,

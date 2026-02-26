@@ -41,7 +41,7 @@ const syncingQueryState = ref(false)
 const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
 const PHOTO_UPLOAD_CHUNK_SIZE = 3
-const MOBILE_PREVIEW_BREAKPOINT = 960
+const MOBILE_PREVIEW_BREAKPOINT = 1100
 const MOBILE_MAX_PREVIEW_TILES = 8
 
 const route = useRoute()
