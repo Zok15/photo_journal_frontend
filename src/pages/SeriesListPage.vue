@@ -2550,6 +2550,10 @@ function toggleMobileFilters() {
   .filters-panel.filters-panel--mobile-open {
     display: block;
   }
+
+  .preview-tile-image {
+    object-fit: contain;
+  }
 }
 
 @media (max-width: 720px) {
