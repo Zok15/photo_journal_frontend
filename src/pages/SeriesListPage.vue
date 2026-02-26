@@ -2563,5 +2563,17 @@ function toggleMobileFilters() {
     flex-basis: 156px;
   }
 
+  .preview-grid {
+    gap: 8px;
+  }
+
+  .preview-row {
+    overflow: hidden;
+  }
+
+  .preview-tile-image {
+    object-fit: contain;
+  }
+
 }
 </style>

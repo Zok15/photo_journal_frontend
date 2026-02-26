@@ -1399,5 +1399,17 @@ watch([availableTags, visibleTagRows], async () => {
   .series-card h2 {
     font-size: 26px;
   }
+
+  .preview-grid {
+    gap: 8px;
+  }
+
+  .preview-row {
+    overflow: hidden;
+  }
+
+  .preview-tile-image {
+    object-fit: contain;
+  }
 }
 </style>
