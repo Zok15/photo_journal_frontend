@@ -2,14 +2,80 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://photolog.org/</loc>
-    <lastmod>2026-02-26T08:22:58.569Z</lastmod>
+    <lastmod>2026-02-26T09:12:48.035Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://photolog.org/privacy-policy</loc>
+    <lastmod>2026-02-26T09:12:48.035Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://photolog.org/public/series</loc>
-    <lastmod>2026-02-26T08:22:58.569Z</lastmod>
+    <lastmod>2026-02-26T09:12:48.035Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/botsad-35</loc>
+    <lastmod>2026-02-25T21:13:29.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/festival-ognia-i-sveta-25</loc>
+    <lastmod>2026-02-25T18:35:48.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/gudauri-23</loc>
+    <lastmod>2026-02-25T19:23:51.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/gudauri-zima-34</loc>
+    <lastmod>2026-02-25T20:58:12.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/izrail-26</loc>
+    <lastmod>2026-02-25T17:30:06.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/kodzori-36</loc>
+    <lastmod>2026-02-25T21:17:56.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/krasnyi-park-33</loc>
+    <lastmod>2026-02-25T20:56:44.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/kutaisi-22</loc>
+    <lastmod>2026-02-25T16:25:04.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/tbilisi-24</loc>
+    <lastmod>2026-02-25T17:50:58.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photolog.org/series/tbilisskoe-more-27</loc>
+    <lastmod>2026-02-25T18:41:29.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>
