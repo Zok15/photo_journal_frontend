@@ -822,7 +822,7 @@ watch([availableTags, visibleTagRows], async () => {
 
           <section class="filter-group">
             <h3>{{ t('Теги') }}</h3>
-            <div class="tags-cloud-shell">
+            <div class="tags-cloud-shell" :class="{ 'tags-cloud-shell--with-collapse': canCollapseTagRows }">
               <div
                 ref="tagsCloudRef"
                 class="chip-row tags-cloud"
@@ -842,6 +842,11 @@ watch([availableTags, visibleTagRows], async () => {
               </div>
 
               <div v-if="hasHiddenTagRows" class="tags-fade-overlay"></div>
+              <div v-if="canCollapseTagRows" class="chip-row tags-collapse-row">
+                <button type="button" class="tags-expand-btn tags-collapse-btn" :title="t('Свернуть')" @click="collapseTagRows">
+                  <span class="tags-chevron tags-chevron--up" aria-hidden="true"></span>
+                </button>
+              </div>
               <button
                 v-if="hasHiddenTagRows"
                 type="button"
@@ -850,12 +855,6 @@ watch([availableTags, visibleTagRows], async () => {
                 @click="expandTagRows"
               >
                 <span class="tags-chevron tags-chevron--down" aria-hidden="true"></span>
-              </button>
-            </div>
-
-            <div v-if="canCollapseTagRows" class="chip-row tags-collapse-row">
-              <button type="button" class="tags-expand-btn tags-collapse-btn" :title="t('Свернуть')" @click="collapseTagRows">
-                <span class="tags-chevron tags-chevron--up" aria-hidden="true"></span>
               </button>
             </div>
           </section>
@@ -1177,6 +1176,10 @@ watch([availableTags, visibleTagRows], async () => {
   padding-bottom: 34px;
 }
 
+.tags-cloud-shell--with-collapse {
+  padding-bottom: 66px;
+}
+
 .tags-cloud {
   transition: max-height 0.24s ease;
 }
@@ -1206,27 +1209,45 @@ watch([availableTags, visibleTagRows], async () => {
   left: 50%;
   bottom: 8px;
   transform: translateX(-50%);
-  width: 40px;
-  height: 28px;
+  width: 34px;
+  height: 22px;
   border: 0;
   border-radius: 999px;
-  background: rgba(154, 198, 176, 0.25);
+  background: #eef3ed;
+  color: #4f6354;
   padding: 0;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+  z-index: 2;
+}
+
+.tags-expand-btn::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 999px;
+  background: rgba(170, 205, 185, 0.72);
+  filter: blur(12px);
+  z-index: -1;
+  pointer-events: none;
 }
 
 .tags-expand-btn:hover {
-  background: rgba(154, 198, 176, 0.38);
+  background: #eef3ed;
+}
+
+.tags-expand-btn:hover::before {
+  background: rgba(170, 205, 185, 0.86);
 }
 
 .tags-chevron {
-  width: 12px;
-  height: 12px;
-  border-right: 3px solid rgba(238, 244, 239, 0.95);
-  border-bottom: 3px solid rgba(238, 244, 239, 0.95);
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
   border-radius: 2px;
   display: block;
 }
@@ -1240,20 +1261,25 @@ watch([availableTags, visibleTagRows], async () => {
 }
 
 .tags-collapse-row {
-  margin-top: 6px;
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  margin: 0;
   justify-content: center;
+  z-index: 2;
 }
 
 .tags-collapse-btn {
   position: static;
   transform: none;
   width: 34px;
-  height: 24px;
-  background: #e3ebe4;
+  height: 22px;
+  background: #eef3ed;
 }
 
 .tags-collapse-btn:hover {
-  background: #d5e5da;
+  background: #eef3ed;
 }
 
 .chip,
