@@ -143,6 +143,8 @@ export function buildPreviewRowsWithHeroPattern(
   const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 320
   const minPerRow = Number.isFinite(options.minPerRow) ? options.minPerRow : 2
   const maxPerRow = Number.isFinite(options.maxPerRow) ? options.maxPerRow : 7
+  const minRowsOption = Number.isFinite(options.minRows) ? Math.max(1, Number(options.minRows)) : null
+  const maxRowsOption = Number.isFinite(options.maxRows) ? Math.max(1, Number(options.maxRows)) : null
   const fallbackGap = Number.isFinite(options.fallbackGap) ? options.fallbackGap : 8
   const fallbackMaxTiles = Number.isFinite(options.fallbackMaxTiles) ? options.fallbackMaxTiles : 6
   const fallbackMinRows = Number.isFinite(options.fallbackMinRows) ? options.fallbackMinRows : 1
@@ -301,8 +303,13 @@ export function buildPreviewRowsWithHeroPattern(
 
   for (let count = minCount; count <= maxCount; count += 1) {
     const chunk = items.slice(0, count)
-    const minRows = Math.ceil(count / maxPerRow)
-    const maxRows = Math.floor(count / minPerRow)
+    const minRowsByCount = Math.ceil(count / maxPerRow)
+    const maxRowsByCount = Math.floor(count / minPerRow)
+    const minRows = Math.max(minRowsByCount, minRowsOption ?? minRowsByCount)
+    const maxRows = Math.min(maxRowsByCount, maxRowsOption ?? maxRowsByCount)
+    if (minRows > maxRows) {
+      continue
+    }
 
     for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
       const base = Math.floor(count / rowsCount)

@@ -34,14 +34,16 @@ const availableAuthors = ref([])
 const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
+const expandedSeriesTagCards = ref({})
 const previewGridElements = new Map()
 const showMobileFilters = ref(false)
 const MOBILE_PREVIEW_BREAKPOINT = 1100
-const MOBILE_MAX_PREVIEW_TILES = 8
+const MOBILE_MAX_PREVIEW_TILES = 12
+const MOBILE_SERIES_TAGS_COLLAPSED_COUNT = 6
+const TAG_ROWS_INITIAL = 4
 const isMobilePreviewViewport = ref(
   typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,
 )
-const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
 const visibleTagRows = ref(TAG_ROWS_INITIAL)
 const tagRowsTotal = ref(0)
@@ -182,6 +184,37 @@ function shouldShowPreviewOverflowOnTile(item, tile) {
   return String(lastTile?.id) === String(tile?.photo?.id)
 }
 
+function isSeriesCardTagsExpanded(seriesId) {
+  return Boolean(expandedSeriesTagCards.value[String(seriesId)])
+}
+
+function visibleSeriesCardTags(item) {
+  const tags = Array.isArray(item?.tags) ? item.tags : []
+  if (!isMobilePreviewViewport.value || isSeriesCardTagsExpanded(item?.id)) {
+    return tags
+  }
+
+  return tags.slice(0, MOBILE_SERIES_TAGS_COLLAPSED_COUNT)
+}
+
+function hiddenSeriesCardTagsCount(item) {
+  const total = Array.isArray(item?.tags) ? item.tags.length : 0
+  const shown = visibleSeriesCardTags(item).length
+  return Math.max(0, total - shown)
+}
+
+function toggleSeriesCardTags(seriesId) {
+  const key = String(seriesId || '').trim()
+  if (!key) {
+    return
+  }
+
+  expandedSeriesTagCards.value = {
+    ...expandedSeriesTagCards.value,
+    [key]: !expandedSeriesTagCards.value[key],
+  }
+}
+
 function setPreviewGridRef(seriesId, element) {
   const previous = previewGridElements.get(seriesId)
   if (previous && previous !== element && previewResizeObserver) {
@@ -258,6 +291,7 @@ const previewRowsBySeries = computed(() => {
         maxCount: photos.length,
         minPerRow,
         maxPerRow,
+        maxRows: isMobilePreviewViewport.value ? 3 : null,
         targetTotalHeight,
         minGap,
         maxGap,
@@ -422,6 +456,7 @@ async function loadPublicSeries(targetPage = 1) {
     const { data } = await api.get('/public/series', { params })
 
     series.value = Array.isArray(data?.data) ? data.data : []
+    expandedSeriesTagCards.value = {}
     previewImageLoaded.value = {}
     page.value = Number(data?.current_page || targetPage)
     lastPage.value = Number(data?.last_page || 1)
@@ -883,7 +918,7 @@ watch([availableTags, visibleTagRows], async () => {
 
               <div v-if="(item.tags || []).length" class="tags">
                 <button
-                  v-for="tag in item.tags"
+                  v-for="tag in visibleSeriesCardTags(item)"
                   :key="tag.id"
                   type="button"
                   class="tag-chip tag-chip--action"
@@ -891,6 +926,14 @@ watch([availableTags, visibleTagRows], async () => {
                   @click="toggleTag(tag.name)"
                 >
                   #{{ tag.name }}
+                </button>
+                <button
+                  v-if="isMobilePreviewViewport && (item.tags || []).length > MOBILE_SERIES_TAGS_COLLAPSED_COUNT"
+                  type="button"
+                  class="tag-chip tag-chip--action tag-chip--toggle"
+                  @click="toggleSeriesCardTags(item.id)"
+                >
+                  {{ isSeriesCardTagsExpanded(item.id) ? t('Свернуть') : `+${hiddenSeriesCardTagsCount(item)}` }}
                 </button>
               </div>
             </article>
@@ -1403,6 +1446,13 @@ watch([availableTags, visibleTagRows], async () => {
   background: #ddeee4;
   border-color: #b9d5c4;
   color: #335e49;
+}
+
+.tag-chip--toggle {
+  background: #e5ede6;
+  border-color: #c8d8cb;
+  color: #3e5a49;
+  font-weight: 700;
 }
 
 .pager {

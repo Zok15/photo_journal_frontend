@@ -27,6 +27,7 @@ const previewGridWidths = ref({})
 const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const previewUrlVersion = ref(0)
+const expandedSeriesTagCards = ref({})
 const previewGridElements = new Map()
 let previewResizeObserver = null
 let searchDebounceTimer = null
@@ -42,7 +43,9 @@ const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
 const PHOTO_UPLOAD_CHUNK_SIZE = 3
 const MOBILE_PREVIEW_BREAKPOINT = 1100
-const MOBILE_MAX_PREVIEW_TILES = 8
+const MOBILE_MAX_PREVIEW_TILES = 12
+const MOBILE_SERIES_TAGS_COLLAPSED_COUNT = 6
+const TAG_ROWS_INITIAL = 4
 
 const route = useRoute()
 const router = useRouter()
@@ -84,7 +87,6 @@ const creating = ref(false)
 const createError = ref('')
 const createWarnings = ref([])
 const showMobileFilters = ref(false)
-const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
 const visibleTagRows = ref(TAG_ROWS_INITIAL)
 const tagRowsTotal = ref(0)
@@ -512,6 +514,37 @@ function shouldShowPreviewOverflowOnTile(item, tile) {
   return Number(lastTile?.id) === Number(tile?.photo?.id)
 }
 
+function isSeriesCardTagsExpanded(seriesId) {
+  return Boolean(expandedSeriesTagCards.value[String(seriesId)])
+}
+
+function visibleSeriesCardTags(item) {
+  const tags = Array.isArray(item?.tags) ? item.tags : []
+  if (!isMobilePreviewViewport.value || isSeriesCardTagsExpanded(item?.id)) {
+    return tags
+  }
+
+  return tags.slice(0, MOBILE_SERIES_TAGS_COLLAPSED_COUNT)
+}
+
+function hiddenSeriesCardTagsCount(item) {
+  const total = Array.isArray(item?.tags) ? item.tags.length : 0
+  const shown = visibleSeriesCardTags(item).length
+  return Math.max(0, total - shown)
+}
+
+function toggleSeriesCardTags(seriesId) {
+  const key = String(seriesId || '').trim()
+  if (!key) {
+    return
+  }
+
+  expandedSeriesTagCards.value = {
+    ...expandedSeriesTagCards.value,
+    [key]: !expandedSeriesTagCards.value[key],
+  }
+}
+
 function showPendingTagsHint(item) {
   const photosCount = Number(item?.photos_count || 0)
   const tagsCount = Array.isArray(item?.tags) ? item.tags.length : 0
@@ -598,6 +631,7 @@ const previewRowsBySeries = computed(() => {
         maxCount: photos.length,
         minPerRow,
         maxPerRow,
+        maxRows: isMobilePreviewViewport.value ? 3 : null,
         targetTotalHeight,
         minGap,
         maxGap,
@@ -1138,6 +1172,7 @@ async function loadSeries(targetPage = 1, options = {}) {
       calendarMarkedDateKeys.value = calendarDates
 
       series.value = items
+      expandedSeriesTagCards.value = {}
       page.value = data.current_page || targetPage
       lastPage.value = data.last_page || 1
       loadedPage.value = page.value
@@ -1709,7 +1744,7 @@ function toggleMobileFilters() {
 
               <div v-if="(item.tags || []).length" class="series-card-tags">
                 <button
-                  v-for="tag in item.tags"
+                  v-for="tag in visibleSeriesCardTags(item)"
                   :key="tag.id"
                   type="button"
                   class="tag-chip"
@@ -1717,6 +1752,14 @@ function toggleMobileFilters() {
                   @click="toggleTag(tag.name)"
                 >
                   #{{ tag.name }}
+                </button>
+                <button
+                  v-if="isMobilePreviewViewport && (item.tags || []).length > MOBILE_SERIES_TAGS_COLLAPSED_COUNT"
+                  type="button"
+                  class="tag-chip tag-chip--toggle"
+                  @click="toggleSeriesCardTags(item.id)"
+                >
+                  {{ isSeriesCardTagsExpanded(item.id) ? t('Свернуть') : `+${hiddenSeriesCardTagsCount(item)}` }}
                 </button>
               </div>
               <p v-else-if="showPendingTagsHint(item)" class="hint series-card-tags-pending-hint">
@@ -2233,6 +2276,12 @@ function toggleMobileFilters() {
 .tag-chip.active {
   background: var(--accent-soft);
   color: #3f6d56;
+}
+
+.tag-chip--toggle {
+  background: #e5ede6;
+  color: #3e5a49;
+  font-weight: 700;
 }
 
 .content-panel {
