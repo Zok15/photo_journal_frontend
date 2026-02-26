@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
-import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { buildPreviewRowsWithDynamicGrid } from '../lib/previewRows'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
@@ -989,17 +988,11 @@ async function uploadPhotos() {
   uploading.value = true
 
   try {
-    const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(uploadFiles.value, {
-      maxBytes: 2 * 1024 * 1024,
-      maxDimension: 3840,
-      fallbackToOriginal: false,
-      preserveExifOriginal: false,
-    })
-
-    uploadWarnings.value = warnings
+    const optimizedFiles = [...uploadFiles.value]
+    uploadWarnings.value = []
 
     if (!optimizedFiles.length) {
-      uploadError.value = 'No files left after optimization.'
+      uploadError.value = 'No files selected.'
       return
     }
 
@@ -1017,7 +1010,7 @@ async function uploadPhotos() {
       failedUploads.push(...(data?.photos_failed || []))
     }
 
-    uploadWarnings.value = [...warnings, ...failedUploads]
+    uploadWarnings.value = failedUploads
     uploadFiles.value = []
     showUploadForm.value = false
 

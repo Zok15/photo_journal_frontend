@@ -4,7 +4,6 @@ import { RouterLink } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
-import { optimizeImagesForUpload } from '../lib/imageOptimizer'
 import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
 import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
 import { getUser, setCurrentUser } from '../lib/session'
@@ -1005,17 +1004,11 @@ async function createSeries() {
   creating.value = true
 
   try {
-    const { files: optimizedFiles, warnings } = await optimizeImagesForUpload(createFiles.value, {
-      maxBytes: 2 * 1024 * 1024,
-      maxDimension: 3840,
-      fallbackToOriginal: false,
-      preserveExifOriginal: false,
-    })
-
-    createWarnings.value = warnings
+    const optimizedFiles = [...createFiles.value]
+    createWarnings.value = []
 
     if (!optimizedFiles.length) {
-      createError.value = 'No files left after optimization.'
+      createError.value = 'No files selected.'
       return
     }
 
@@ -1062,7 +1055,7 @@ async function createSeries() {
       }
     }
 
-    createWarnings.value = [...warnings, ...failedUploads]
+    createWarnings.value = failedUploads
     createTitle.value = ''
     createDescription.value = ''
     createIsPublic.value = false
