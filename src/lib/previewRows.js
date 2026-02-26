@@ -458,8 +458,6 @@ export function buildPreviewRowsWithDynamicGrid(
 
   const rows = []
   const fullRowHeights = []
-  let laidOutTileWidthSum = 0
-  let laidOutTileCount = 0
   let cursor = 0
 
   const getFittedRowHeight = (chunk, gap) => {
@@ -504,21 +502,17 @@ export function buildPreviewRowsWithDynamicGrid(
     if (isLastRow) {
       const isCompactTail = isSingleRowTile || isTwoTailTiles
       if (isCompactTail) {
-        const averageTileWidth = laidOutTileCount > 0
-          ? (laidOutTileWidthSum / laidOutTileCount)
-          : Math.min(maxTileWidth, width)
-        const targetAverageTileWidth = Math.min(
-          Math.max(minTileWidth, averageTileWidth),
-          maxTileWidth,
-        )
-        const tailRatioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
-        const tailMeanRatio = tailRatioSum / chunk.length
+        const averageRowHeight = fullRowHeights.length
+          ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
+          : targetRowHeight
         const minTailRatio = chunk.reduce((min, item) => Math.min(min, item.ratio), Number.POSITIVE_INFINITY)
         const maxTailRatio = chunk.reduce((max, item) => Math.max(max, item.ratio), 0)
         const minAllowedHeight = minTileWidth / (Number.isFinite(minTailRatio) && minTailRatio > 0 ? minTailRatio : 1)
         const maxAllowedHeight = maxTileWidth / (maxTailRatio > 0 ? maxTailRatio : 1)
-        const preferredHeight = targetAverageTileWidth / (tailMeanRatio > 0 ? tailMeanRatio : 1)
-        rowHeight = Math.max(minAllowedHeight, Math.min(maxAllowedHeight, preferredHeight))
+        rowHeight = Math.max(averageRowHeight, minAllowedHeight)
+        if (minAllowedHeight <= maxAllowedHeight) {
+          rowHeight = Math.min(rowHeight, maxAllowedHeight)
+        }
       } else {
         const averageHeight = fullRowHeights.length
           ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
@@ -544,11 +538,6 @@ export function buildPreviewRowsWithDynamicGrid(
       gap,
       height: rowHeight,
       tiles,
-    })
-
-    tiles.forEach((tile) => {
-      laidOutTileWidthSum += tile.width
-      laidOutTileCount += 1
     })
 
     cursor += chosenCount
