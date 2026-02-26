@@ -39,6 +39,7 @@ const previewGridElements = new Map()
 const showMobileFilters = ref(false)
 const MOBILE_PREVIEW_BREAKPOINT = 1100
 const MOBILE_MAX_PREVIEW_TILES = 12
+const DESKTOP_MAX_PREVIEW_TILES = 12
 const MOBILE_SERIES_TAGS_COLLAPSED_COUNT = 6
 const TAG_ROWS_INITIAL = 4
 const isMobilePreviewViewport = ref(
@@ -161,11 +162,8 @@ const seriesPreviews = computed(() => {
 
 function previewTiles(seriesId) {
   const tiles = seriesPreviews.value[seriesId] || []
-  if (!isMobilePreviewViewport.value) {
-    return tiles
-  }
-
-  return tiles.slice(0, MOBILE_MAX_PREVIEW_TILES)
+  const limit = isMobilePreviewViewport.value ? MOBILE_MAX_PREVIEW_TILES : DESKTOP_MAX_PREVIEW_TILES
+  return tiles.slice(0, limit)
 }
 
 function previewOverflowCount(item) {
@@ -291,14 +289,13 @@ const previewRowsBySeries = computed(() => {
         maxCount: photos.length,
         minPerRow,
         maxPerRow,
-        maxRows: isMobilePreviewViewport.value ? 3 : null,
+        maxRows: 3,
         targetTotalHeight,
         minGap,
         maxGap,
         minRowHeight: 96,
         maxRowHeight: 260,
         targetGap,
-        rebalanceRows: true,
         ratioFallback: 1,
         fallbackGap: targetGap,
         fallbackMaxTiles: photos.length,
