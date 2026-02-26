@@ -7,18 +7,22 @@ export function buildPreviewRowsWithClampedHeights(
   const previewGap = Number.isFinite(options.gap) ? options.gap : 8
   const minPerRow = Number.isFinite(options.minPerRow) ? options.minPerRow : 2
   const maxPerRow = Number.isFinite(options.maxPerRow) ? options.maxPerRow : 5
+  const mobileMinPerRow = Number.isFinite(options.mobileMinPerRow) ? options.mobileMinPerRow : minPerRow
+  const mobileMaxPerRow = Number.isFinite(options.mobileMaxPerRow) ? options.mobileMaxPerRow : maxPerRow
+  const mobileBreakPoint = Number.isFinite(options.mobileBreakPoint) ? options.mobileBreakPoint : 760
   const targetRowHeight = Number.isFinite(options.targetRowHeight) ? options.targetRowHeight : 170
   const minRowHeight = Number.isFinite(options.minRowHeight) ? options.minRowHeight : 96
   const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 260
   const minPreviewRatio = Number.isFinite(options.minPreviewRatio) ? options.minPreviewRatio : 0.72
   const maxPreviewRatio = Number.isFinite(options.maxPreviewRatio) ? options.maxPreviewRatio : 2.4
-  const minTileWidth = Number.isFinite(options.minTileWidth) ? options.minTileWidth : 140
-  const maxTileWidth = Number.isFinite(options.maxTileWidth) ? options.maxTileWidth : 420
   const singleMinHeight = Number.isFinite(options.singleMinHeight) ? options.singleMinHeight : 120
   const singleMaxHeight = Number.isFinite(options.singleMaxHeight) ? options.singleMaxHeight : 240
   const fallbackHeight = Number.isFinite(options.fallbackHeight) ? options.fallbackHeight : 160
 
   const width = Math.max(1, Number(containerWidth) || 1)
+  const useMobileLayout = width <= mobileBreakPoint
+  const effectiveMinPerRow = useMobileLayout ? mobileMinPerRow : minPerRow
+  const effectiveMaxPerRow = useMobileLayout ? mobileMaxPerRow : maxPerRow
   const items = (Array.isArray(photos) ? photos : []).map((photo) => {
     const rawRatio = Number(aspectRatioById?.[photo?.id]) || 1
     return {
@@ -39,8 +43,8 @@ export function buildPreviewRowsWithClampedHeights(
     }
   }
 
-  const minRows = Math.ceil(items.length / maxPerRow)
-  const maxRows = Math.floor(items.length / minPerRow)
+  const minRows = Math.ceil(items.length / effectiveMaxPerRow)
+  const maxRows = Math.floor(items.length / effectiveMinPerRow)
   let best = null
 
   for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
@@ -48,7 +52,7 @@ export function buildPreviewRowsWithClampedHeights(
     const extra = items.length % rowsCount
     const counts = Array.from({ length: rowsCount }, (_, index) => base + (index < extra ? 1 : 0))
 
-    if (counts.some((count) => count < minPerRow || count > maxPerRow)) {
+    if (counts.some((count) => count < effectiveMinPerRow || count > effectiveMaxPerRow)) {
       continue
     }
 
@@ -77,32 +81,23 @@ export function buildPreviewRowsWithClampedHeights(
       cursor += count
 
       const rowHeight = rowHeights[rowIndex]
-      const widths = chunk.map((item) => item.ratio * rowHeight)
-      const minWidthInRow = widths.length ? Math.min(...widths) : 0
-      const maxWidthInRow = widths.length ? Math.max(...widths) : 0
+      const clampedHeight = Math.max(minRowHeight, Math.min(maxRowHeight, rowHeight))
+      const widths = chunk.map((item) => item.ratio * clampedHeight)
       const rowTotalWidth = widths.reduce((sum, tileWidth) => sum + tileWidth, 0)
       const used = rowTotalWidth + previewGap * (count - 1)
       emptySpace += Math.abs(width - used)
-      targetDeviation += Math.abs(targetRowHeight - rowHeight)
+      targetDeviation += Math.abs(targetRowHeight - clampedHeight)
 
-      if (rowHeight < minRowHeight) {
-        outOfRangePenalty += Math.abs(minRowHeight - rowHeight) * 6
-      } else if (rowHeight > maxRowHeight) {
-        outOfRangePenalty += Math.abs(rowHeight - maxRowHeight) * 6
-      }
-      if (minWidthInRow < minTileWidth) {
-        outOfRangePenalty += (minTileWidth - minWidthInRow) * 12
-      }
-      if (maxWidthInRow > maxTileWidth) {
-        outOfRangePenalty += (maxWidthInRow - maxTileWidth) * 10
+      if (rowHeight !== clampedHeight) {
+        outOfRangePenalty += Math.abs(rowHeight - clampedHeight) * 6
       }
 
       rows.push({
         gap: previewGap,
-        height: rowHeight,
+        height: clampedHeight,
         tiles: chunk.map((item) => ({
           photo: item.photo,
-          width: item.ratio * rowHeight,
+          width: item.ratio * clampedHeight,
         })),
       })
     }

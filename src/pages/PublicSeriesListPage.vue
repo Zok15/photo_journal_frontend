@@ -228,8 +228,11 @@ const previewRowsBySeries = computed(() => {
       previewAspectRatios.value,
       {
         gap: 8,
-        minPerRow: 3,
-        maxPerRow: 6,
+        minPerRow: 2,
+        maxPerRow: 5,
+        mobileMinPerRow: 1,
+        mobileMaxPerRow: 2,
+        mobileBreakPoint: 760,
         targetRowHeight: 170,
         minRowHeight: 96,
         maxRowHeight: 260,
@@ -237,8 +240,6 @@ const previewRowsBySeries = computed(() => {
         maxPreviewRatio: 2.4,
         singleMinHeight: 120,
         singleMaxHeight: 240,
-        minTileWidth: 170,
-        maxTileWidth: 360,
         fallbackHeight: 160,
       },
     )
