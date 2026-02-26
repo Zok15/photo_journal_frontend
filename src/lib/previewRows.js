@@ -151,12 +151,18 @@ export function buildPreviewRowsWithHeroPattern(
   const minCountOption = Number.isFinite(options.minCount) ? options.minCount : 4
   const maxCountOption = Number.isFinite(options.maxCount) ? options.maxCount : 18
   const ratioFallback = Number.isFinite(options.ratioFallback) ? options.ratioFallback : 1
+  const minRatio = Number.isFinite(options.minRatio) ? options.minRatio : null
+  const maxRatio = Number.isFinite(options.maxRatio) ? options.maxRatio : null
   const rebalanceRows = options.rebalanceRows === true
 
   const items = (Array.isArray(photos) ? photos : [])
     .map((photo) => ({
       photo,
-      ratio: Number(aspectRatioById?.[photo?.id]) || ratioFallback,
+      ratio: (() => {
+        const raw = Number(aspectRatioById?.[photo?.id]) || ratioFallback
+        const withMin = minRatio !== null ? Math.max(minRatio, raw) : raw
+        return maxRatio !== null ? Math.min(maxRatio, withMin) : withMin
+      })(),
     }))
     .filter((item) => item.ratio > 0)
 
