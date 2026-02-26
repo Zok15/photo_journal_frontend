@@ -890,13 +890,18 @@ function onPhotoDragStart(photo, event) {
     return
   }
 
-  draggingPhotoId.value = photo.id
+  const photoId = Number(photo?.id || 0)
+  if (!Number.isInteger(photoId) || photoId <= 0) {
+    return
+  }
+
+  draggingPhotoId.value = photoId
   dragOverPhotoId.value = null
   photoOrderError.value = ''
 
   if (event?.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(photo.id))
+    event.dataTransfer.setData('text/plain', String(photoId))
   }
 }
 
@@ -919,23 +924,65 @@ async function onPhotoDrop(targetPhoto) {
     return
   }
 
-  if (!item.value || draggingPhotoId.value === null || draggingPhotoId.value === targetPhoto.id) {
+  const sourceId = Number(draggingPhotoId.value || 0)
+  const targetId = Number(targetPhoto?.id || 0)
+  if (
+    !item.value
+    || !Number.isInteger(sourceId)
+    || sourceId <= 0
+    || !Number.isInteger(targetId)
+    || targetId <= 0
+    || sourceId === targetId
+  ) {
     onPhotoDragEnd()
     return
+  }
+
+  const toPhotoIds = (photos) => {
+    const ids = []
+    for (const photo of photos) {
+      const id = Number(photo?.id || 0)
+      if (!Number.isInteger(id) || id <= 0) {
+        return null
+      }
+      ids.push(id)
+    }
+
+    const unique = new Set(ids)
+    if (unique.size !== ids.length) {
+      return null
+    }
+
+    return ids
+  }
+
+  const moveByIds = (photos, fromPhotoId, toPhotoId) => {
+    const next = [...photos]
+    const fromIndex = next.findIndex((photo) => Number(photo?.id || 0) === fromPhotoId)
+    const toIndex = next.findIndex((photo) => Number(photo?.id || 0) === toPhotoId)
+    if (fromIndex < 0 || toIndex < 0) {
+      return null
+    }
+
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    return next
   }
 
   const previousOrder = [...photoList.value]
-  const fromIndex = previousOrder.findIndex((photo) => photo.id === draggingPhotoId.value)
-  const toIndex = previousOrder.findIndex((photo) => photo.id === targetPhoto.id)
-
-  if (fromIndex < 0 || toIndex < 0) {
+  let nextOrder = moveByIds(previousOrder, sourceId, targetId)
+  if (!nextOrder) {
     onPhotoDragEnd()
     return
   }
 
-  const nextOrder = [...previousOrder]
-  const [moved] = nextOrder.splice(fromIndex, 1)
-  nextOrder.splice(toIndex, 0, moved)
+  let nextIds = toPhotoIds(nextOrder)
+  if (!nextIds) {
+    photoOrderError.value = t('Не удалось сохранить порядок фото.')
+    onPhotoDragEnd()
+    loadSeries({ silent: true }).catch(() => {})
+    return
+  }
 
   item.value = {
     ...item.value,
@@ -957,10 +1004,42 @@ async function onPhotoDrop(targetPhoto) {
   }
 
   try {
-    await api.patch(`/series/${seriesKey}/photos/reorder`, {
-      photo_ids: nextOrder.map((photo) => photo.id),
-    })
+    const patchOrder = async (photoIds) => {
+      await api.patch(`/series/${seriesKey}/photos/reorder`, {
+        photo_ids: photoIds,
+      })
+    }
+
+    await patchOrder(nextIds)
   } catch (e) {
+    const exactOrderError = String(e?.response?.data?.message || '')
+      .toLowerCase()
+      .includes('photo_ids must contain all photos of the series exactly once')
+
+    if (exactOrderError) {
+      const reloaded = await loadSeries({ silent: true, includePhotos: true })
+      if (reloaded && Array.isArray(photoList.value) && photoList.value.length) {
+        const retryOrder = moveByIds(photoList.value, sourceId, targetId)
+        const retryIds = retryOrder ? toPhotoIds(retryOrder) : null
+        if (retryOrder && retryIds) {
+          item.value = {
+            ...item.value,
+            photos: retryOrder,
+          }
+          try {
+            await api.patch(`/series/${seriesKey}/photos/reorder`, {
+              photo_ids: retryIds,
+            })
+            reorderingPhotos.value = false
+            onPhotoDragEnd()
+            return
+          } catch (_) {
+            // fall through to common rollback below
+          }
+        }
+      }
+    }
+
     item.value = {
       ...item.value,
       photos: previousOrder,

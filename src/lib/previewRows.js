@@ -432,8 +432,9 @@ export function buildPreviewRowsWithDynamicGrid(
   const minByMaxTileWidth = Math.max(1, Math.ceil((width + previewGap) / (maxTileWidth + previewGap)))
   const allowedMinPerRow = Math.max(effectiveMinPerRow, minByMaxTileWidth)
   const allowedMaxPerRow = Math.max(1, Math.min(effectiveMaxPerRow, maxByMinTileWidth))
-  const clampedMinPerRow = Math.min(allowedMinPerRow, allowedMaxPerRow)
-  const clampedMaxPerRow = Math.max(allowedMinPerRow, allowedMaxPerRow)
+  // If min/max constraints conflict, relax min-per-row to preserve min tile width.
+  const clampedMaxPerRow = allowedMaxPerRow
+  const clampedMinPerRow = Math.min(allowedMinPerRow, clampedMaxPerRow)
   const targetPerRow = Math.max(clampedMinPerRow, Math.min(clampedMaxPerRow, preferredPerRow))
 
   const items = (Array.isArray(photos) ? photos : []).map((photo) => ({
