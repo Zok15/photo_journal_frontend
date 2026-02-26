@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { collectHeroPhotosFromSeries, HERO_CACHE_TTL_MS, HERO_MAX_POOL, readHeroCache, shufflePhotos, writeHeroCache } from '../lib/heroPhotoPool'
 import { resolveImageAspectRatio } from '../lib/imageAspectRatio'
 import { currentLocale, t } from '../lib/i18n'
+import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
 import { isAuthenticated } from '../lib/session'
 import { seriesPath } from '../lib/seriesPath'
 import { formatLocalizedTagLabel, normalizeTagValue } from '../lib/tagLabels'
@@ -146,125 +147,6 @@ async function ensureHeroRatio(photo) {
   }
 }
 
-function buildHeroLayout(photos, containerWidth, targetTotalHeight) {
-  const items = photos
-    .map((photo) => ({
-      photo,
-      ratio: heroAspectRatios.value[photo.id] || 1,
-    }))
-    .filter((item) => item.ratio > 0)
-
-  if (!items.length) {
-    return []
-  }
-
-  const minGap = 2
-  const maxGap = 20
-  const targetGap = 8
-  const minRowHeight = 70
-  const maxRowHeight = 320
-  const maxCount = Math.min(items.length, 18)
-  const minPerRow = 2
-  const maxPerRow = 7
-  let best = null
-
-  function evaluateCandidate(chunk, rowCounts) {
-    const rows = []
-    let cursor = 0
-    for (const count of rowCounts) {
-      const rowItems = chunk.slice(cursor, cursor + count)
-      cursor += count
-      const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0)
-      rows.push({
-        items: rowItems,
-        count,
-        ratioSum: ratioSum || 0.0001,
-      })
-    }
-
-    const denominator = (rows.length - 1) - rows.reduce((sum, row) => {
-      return sum + ((row.count - 1) / row.ratioSum)
-    }, 0)
-    if (Math.abs(denominator) < 0.0001) {
-      return
-    }
-
-    const widthsPart = rows.reduce((sum, row) => sum + (containerWidth / row.ratioSum), 0)
-    const gap = (targetTotalHeight - widthsPart) / denominator
-    if (!Number.isFinite(gap) || gap < minGap || gap > maxGap) {
-      return
-    }
-
-    const preparedRows = rows.map((row) => {
-      const height = (containerWidth - gap * (row.count - 1)) / row.ratioSum
-      return {
-        gap,
-        height,
-        tiles: row.items.map((item) => ({
-          photo: item.photo,
-          width: item.ratio * height,
-        })),
-      }
-    })
-
-    const tooSmall = preparedRows.some((row) => row.height < minRowHeight)
-    const tooLarge = preparedRows.some((row) => row.height > maxRowHeight)
-    if (tooSmall || tooLarge) {
-      return
-    }
-
-    const heights = preparedRows.map((row) => row.height)
-    const mean = heights.reduce((sum, value) => sum + value, 0) / heights.length
-    const variance = heights.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / heights.length
-    const stdDev = Math.sqrt(variance)
-    const score = Math.abs(gap - targetGap) * 2.4 + stdDev + (chunk.length * 0.05)
-
-    if (!best || score < best.score) {
-      best = { score, rows: preparedRows }
-    }
-  }
-
-  for (let count = 4; count <= maxCount; count += 1) {
-    const chunk = items.slice(0, count)
-
-    for (let first = minPerRow; first <= count - minPerRow; first += 1) {
-      const second = count - first
-      if (first > maxPerRow || second > maxPerRow) {
-        continue
-      }
-      evaluateCandidate(chunk, [first, second])
-    }
-
-    for (let first = minPerRow; first <= count - minPerRow * 2; first += 1) {
-      for (let second = minPerRow; second <= count - first - minPerRow; second += 1) {
-        const third = count - first - second
-        if (first > maxPerRow || second > maxPerRow || third > maxPerRow || third < minPerRow) {
-          continue
-        }
-        evaluateCandidate(chunk, [first, second, third])
-      }
-    }
-  }
-
-  if (!best) {
-    const fallback = items.slice(0, Math.min(6, items.length))
-    const split = Math.max(2, Math.ceil(fallback.length / 2))
-    const rows = [fallback.slice(0, split), fallback.slice(split)].filter((row) => row.length)
-    const gap = 8
-    return rows.map((rowItems) => {
-      const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
-      const height = Math.max(minRowHeight, Math.min(maxRowHeight, (containerWidth - gap * (rowItems.length - 1)) / ratioSum))
-      return {
-        gap,
-        height,
-        tiles: rowItems.map((item) => ({ photo: item.photo, width: item.ratio * height })),
-      }
-    })
-  }
-
-  return best.rows
-}
-
 const heroRows = computed(() => {
   const width = heroGridWidth.value || 560
   const allPhotos = heroPhotos.value
@@ -279,7 +161,16 @@ const heroRows = computed(() => {
       (heroTextHeight.value || 0) - (HERO_INNER_VERTICAL_PADDING * 2),
     )
   const pool = allPhotos.slice(0, Math.min(HERO_MAX_POOL, allPhotos.length))
-  return buildHeroLayout(pool, width, targetRowsHeight)
+  return buildPreviewRowsWithHeroPattern(pool, width, heroAspectRatios.value, {
+    targetTotalHeight: targetRowsHeight,
+    minCount: 4,
+    maxCount: 18,
+    minPerRow: 2,
+    maxPerRow: 7,
+    minRowHeight: 70,
+    maxRowHeight: 320,
+    targetGap: 8,
+  }).rows
 })
 
 const heroGridGap = computed(() => Number(heroRows.value[0]?.gap ?? HERO_ROW_GAP))

@@ -128,6 +128,175 @@ export function buildPreviewRowsWithClampedHeights(
   return { rows: best.rows }
 }
 
+export function buildPreviewRowsWithHeroPattern(
+  photos,
+  containerWidth,
+  aspectRatioById = {},
+  options = {},
+) {
+  const width = Math.max(1, Number(containerWidth) || 1)
+  const targetTotalHeight = Number.isFinite(options.targetTotalHeight) ? options.targetTotalHeight : 280
+  const minGap = Number.isFinite(options.minGap) ? options.minGap : 2
+  const maxGap = Number.isFinite(options.maxGap) ? options.maxGap : 20
+  const targetGap = Number.isFinite(options.targetGap) ? options.targetGap : 8
+  const minRowHeight = Number.isFinite(options.minRowHeight) ? options.minRowHeight : 70
+  const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 320
+  const minPerRow = Number.isFinite(options.minPerRow) ? options.minPerRow : 2
+  const maxPerRow = Number.isFinite(options.maxPerRow) ? options.maxPerRow : 7
+  const fallbackGap = Number.isFinite(options.fallbackGap) ? options.fallbackGap : 8
+  const fallbackMaxTiles = Number.isFinite(options.fallbackMaxTiles) ? options.fallbackMaxTiles : 6
+  const minCountOption = Number.isFinite(options.minCount) ? options.minCount : 4
+  const maxCountOption = Number.isFinite(options.maxCount) ? options.maxCount : 18
+  const ratioFallback = Number.isFinite(options.ratioFallback) ? options.ratioFallback : 1
+
+  const items = (Array.isArray(photos) ? photos : [])
+    .map((photo) => ({
+      photo,
+      ratio: Number(aspectRatioById?.[photo?.id]) || ratioFallback,
+    }))
+    .filter((item) => item.ratio > 0)
+
+  if (!items.length) {
+    return { rows: [] }
+  }
+
+  const maxCount = Math.max(1, Math.min(items.length, maxCountOption))
+  const minCount = Math.max(1, Math.min(maxCount, minCountOption))
+  let best = null
+
+  function evaluateCandidate(chunk, rowCounts) {
+    const rows = []
+    let cursor = 0
+
+    for (const count of rowCounts) {
+      const rowItems = chunk.slice(cursor, cursor + count)
+      cursor += count
+      const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0)
+      rows.push({
+        items: rowItems,
+        count,
+        ratioSum: ratioSum || 0.0001,
+      })
+    }
+
+    const denominator = (rows.length - 1) - rows.reduce((sum, row) => {
+      return sum + ((row.count - 1) / row.ratioSum)
+    }, 0)
+    if (Math.abs(denominator) < 0.0001) {
+      return
+    }
+
+    const widthsPart = rows.reduce((sum, row) => sum + (width / row.ratioSum), 0)
+    const gap = (targetTotalHeight - widthsPart) / denominator
+    if (!Number.isFinite(gap) || gap < minGap || gap > maxGap) {
+      return
+    }
+
+    const preparedRows = rows.map((row) => {
+      const height = (width - gap * (row.count - 1)) / row.ratioSum
+      return {
+        gap,
+        height,
+        tiles: row.items.map((item) => ({
+          photo: item.photo,
+          width: item.ratio * height,
+        })),
+      }
+    })
+
+    const hasOutOfRangeHeight = preparedRows.some((row) => row.height < minRowHeight || row.height > maxRowHeight)
+    if (hasOutOfRangeHeight) {
+      return
+    }
+
+    const heights = preparedRows.map((row) => row.height)
+    const mean = heights.reduce((sum, value) => sum + value, 0) / heights.length
+    const variance = heights.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / heights.length
+    const stdDev = Math.sqrt(variance)
+    const score = Math.abs(gap - targetGap) * 2.4 + stdDev + (chunk.length * 0.05)
+
+    if (!best || score < best.score) {
+      best = { score, rows: preparedRows }
+    }
+  }
+
+  for (let count = minCount; count <= maxCount; count += 1) {
+    const chunk = items.slice(0, count)
+    const minRows = Math.ceil(count / maxPerRow)
+    const maxRows = Math.floor(count / minPerRow)
+
+    for (let rowsCount = minRows; rowsCount <= maxRows; rowsCount += 1) {
+      const base = Math.floor(count / rowsCount)
+      const extra = count % rowsCount
+      const rowCounts = Array.from(
+        { length: rowsCount },
+        (_, index) => base + (index < extra ? 1 : 0),
+      )
+      if (rowCounts.some((rowCount) => rowCount < minPerRow || rowCount > maxPerRow)) {
+        continue
+      }
+      evaluateCandidate(chunk, rowCounts)
+    }
+
+    for (let first = minPerRow; first <= count - minPerRow; first += 1) {
+      const second = count - first
+      if (first > maxPerRow || second > maxPerRow) {
+        continue
+      }
+      evaluateCandidate(chunk, [first, second])
+    }
+
+    for (let first = minPerRow; first <= count - minPerRow * 2; first += 1) {
+      for (let second = minPerRow; second <= count - first - minPerRow; second += 1) {
+        const third = count - first - second
+        if (first > maxPerRow || second > maxPerRow || third > maxPerRow || third < minPerRow) {
+          continue
+        }
+        evaluateCandidate(chunk, [first, second, third])
+      }
+    }
+  }
+
+  if (best) {
+    return { rows: best.rows }
+  }
+
+  const fallback = items.slice(0, Math.min(fallbackMaxTiles, items.length))
+  if (!fallback.length) {
+    return { rows: [] }
+  }
+
+  const fallbackRowsCount = Math.max(1, Math.ceil(fallback.length / maxPerRow))
+  const fallbackBase = Math.floor(fallback.length / fallbackRowsCount)
+  const fallbackExtra = fallback.length % fallbackRowsCount
+  const rowChunks = []
+  let cursor = 0
+  for (let rowIndex = 0; rowIndex < fallbackRowsCount; rowIndex += 1) {
+    const rowCount = fallbackBase + (rowIndex < fallbackExtra ? 1 : 0)
+    if (rowCount <= 0) {
+      continue
+    }
+    rowChunks.push(fallback.slice(cursor, cursor + rowCount))
+    cursor += rowCount
+  }
+
+  const rows = rowChunks.map((rowItems) => {
+    const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
+    const fittedHeight = (width - fallbackGap * (rowItems.length - 1)) / ratioSum
+    const height = Math.min(maxRowHeight, Math.max(1, fittedHeight))
+    return {
+      gap: fallbackGap,
+      height,
+      tiles: rowItems.map((item) => ({
+        photo: item.photo,
+        width: item.ratio * height,
+      })),
+    }
+  })
+
+  return { rows }
+}
+
 export function buildPreviewRowsWithDynamicGrid(
   photos,
   containerWidth,

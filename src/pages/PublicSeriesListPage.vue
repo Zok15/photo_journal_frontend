@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api } from '../lib/api'
 import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
-import { buildPreviewRowsWithClampedHeights } from '../lib/previewRows'
+import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
 import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { currentLocale, t } from '../lib/i18n'
@@ -240,27 +240,28 @@ const previewRowsBySeries = computed(() => {
     }
 
     const width = previewGridWidths.value[seriesId] || 920
-    map[seriesId] = buildPreviewRowsWithClampedHeights(
+    const minPerRow = isMobilePreviewViewport.value ? 3 : 2
+    const maxPerRow = isMobilePreviewViewport.value ? 4 : 5
+    const targetTotalHeight = isMobilePreviewViewport.value
+      ? Math.max(210, Math.min(420, width * 0.7))
+      : Math.max(320, Math.min(580, width * 0.58))
+
+    map[seriesId] = buildPreviewRowsWithHeroPattern(
       photos,
       width,
       previewAspectRatios.value,
       {
-        gap: 8,
-        minPerRow: 2,
-        maxPerRow: 5,
-        mobileMinPerRow: 3,
-        mobileMaxPerRow: 4,
-        mobileBreakPoint: MOBILE_PREVIEW_BREAKPOINT,
-        strictRatioOnMobile: true,
-        forceMobileLayout: isMobilePreviewViewport.value,
-        targetRowHeight: 170,
+        minCount: photos.length,
+        maxCount: photos.length,
+        minPerRow,
+        maxPerRow,
+        targetTotalHeight,
         minRowHeight: 96,
         maxRowHeight: 260,
-        minPreviewRatio: 0.72,
-        maxPreviewRatio: 2.4,
-        singleMinHeight: 120,
-        singleMaxHeight: 240,
-        fallbackHeight: 160,
+        targetGap: 8,
+        ratioFallback: 1,
+        fallbackGap: 8,
+        fallbackMaxTiles: photos.length,
       },
     )
   })
