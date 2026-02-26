@@ -4,4 +4,4 @@ Allow: /
 Disallow: /login
 Disallow: /register
 Disallow: /profile
-Sitemap: /sitemap.xml
+Sitemap: https://photolog.org/sitemap.xml

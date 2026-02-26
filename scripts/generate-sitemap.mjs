@@ -1,17 +1,14 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(process.cwd())
 const outputPath = resolve(ROOT, 'public/sitemap.xml')
-const rawOrigin = String(process.env.VITE_SITE_URL || '').trim().replace(/\/+$/, '')
+const fallbackOrigin = 'https://photolog.org'
+const configuredOrigin = String(process.env.VITE_SITE_URL || '').trim().replace(/\/+$/, '')
+const rawOrigin = configuredOrigin || fallbackOrigin
 
-if (!rawOrigin) {
-  if (existsSync(outputPath)) {
-    rmSync(outputPath)
-  }
-
-  console.warn('[sitemap] VITE_SITE_URL is not set, sitemap.xml is skipped')
-  process.exit(0)
+if (!configuredOrigin) {
+  console.warn(`[sitemap] VITE_SITE_URL is not set, fallback is used: ${fallbackOrigin}`)
 }
 
 const now = new Date().toISOString()
