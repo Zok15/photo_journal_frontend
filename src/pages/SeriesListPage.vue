@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
+import PaginationControls from '../components/PaginationControls.vue'
 import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
 import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
@@ -312,6 +313,20 @@ function buildQueryState() {
   return query
 }
 
+function areStringArraysEqual(a, b) {
+  if (a.length !== b.length) {
+    return false
+  }
+
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function applyRouteQuery(query) {
   syncingQueryState.value = true
   try {
@@ -330,7 +345,9 @@ function applyRouteQuery(query) {
     const tags = typeof query.tag === 'string'
       ? query.tag.split(',').map((item) => item.trim()).filter(Boolean)
       : []
-    selectedTags.value = tags
+    if (!areStringArraysEqual(selectedTags.value, tags)) {
+      selectedTags.value = tags
+    }
 
     const pickedDate = typeof query.date === 'string' ? query.date : ''
     selectedCalendarDate.value = pickedDate
@@ -1800,11 +1817,16 @@ function toggleMobileFilters() {
             </article>
           </div>
 
-          <div class="pager" v-if="!loading && !error && lastPage > 1">
-            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">{{ t('Назад') }}</button>
-            <span>{{ t('Страница') }} {{ page }} / {{ lastPage }}</span>
-            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">{{ t('Вперёд') }}</button>
-          </div>
+          <PaginationControls
+            v-if="!loading && !error"
+            :page="page"
+            :last-page="lastPage"
+            :disabled="loading"
+            :page-label="t('Страница')"
+            :prev-label="t('Назад')"
+            :next-label="t('Вперёд')"
+            @change="goToPage"
+          />
         </main>
       </div>
     </div>
@@ -2645,13 +2667,6 @@ function toggleMobileFilters() {
   line-height: 1;
   padding: 6px 9px;
   backdrop-filter: blur(2px);
-}
-
-.pager {
-  margin-top: 14px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 .warnings {

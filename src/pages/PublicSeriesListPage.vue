@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import PaginationControls from '../components/PaginationControls.vue'
 import { api } from '../lib/api'
 import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
 import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
@@ -55,6 +56,7 @@ let previewResizeObserver = null
 let tagsLayoutObserver = null
 let authorSuggestBlurTimerId = null
 let searchDebounceTimer = null
+let skipNextRouteReload = false
 
 const hasActiveFilters = computed(() => {
   return Boolean(
@@ -446,11 +448,45 @@ function updateAuthorQuery(authorId) {
   } else {
     delete nextQuery.author_id
   }
+  delete nextQuery.page
 
   router.replace({ query: nextQuery }).catch(() => {})
 }
 
-async function loadPublicSeries(targetPage = 1) {
+function syncPageToQuery(targetPage) {
+  const currentQuery = route.query || {}
+  const nextQuery = { ...currentQuery }
+
+  if (targetPage > 1) {
+    nextQuery.page = String(targetPage)
+  } else {
+    delete nextQuery.page
+  }
+
+  const currentNormalized = JSON.stringify(Object.keys(currentQuery).sort().reduce((acc, key) => {
+    acc[key] = currentQuery[key]
+    return acc
+  }, {}))
+  const nextNormalized = JSON.stringify(Object.keys(nextQuery).sort().reduce((acc, key) => {
+    acc[key] = nextQuery[key]
+    return acc
+  }, {}))
+
+  if (currentNormalized === nextNormalized) {
+    return
+  }
+
+  skipNextRouteReload = true
+  router.replace({ query: nextQuery }).catch(() => {
+    skipNextRouteReload = false
+  })
+}
+
+async function loadPublicSeries(targetPage = 1, options = {}) {
+  if (!options.fromRoute) {
+    syncPageToQuery(targetPage)
+  }
+
   loading.value = true
   error.value = ''
 
@@ -612,6 +648,8 @@ function applyFiltersFromQuery(query = {}) {
   dateFrom.value = String(query.date_from || '').trim()
   dateTo.value = String(query.date_to || '').trim()
   selectedAuthorId.value = String(query.author_id || '').trim()
+  const nextPage = Number.parseInt(String(query.page || '1'), 10)
+  page.value = Number.isFinite(nextPage) && nextPage > 0 ? nextPage : 1
   authorSearchInput.value = ''
   showAuthorSuggestions.value = false
 }
@@ -693,7 +731,12 @@ watch(
   () => route.fullPath,
   () => {
     applyFiltersFromQuery(route.query)
-    loadPublicSeries(1)
+    if (skipNextRouteReload) {
+      skipNextRouteReload = false
+      return
+    }
+
+    loadPublicSeries(page.value || 1, { fromRoute: true })
   },
   { immediate: true },
 )
@@ -977,11 +1020,16 @@ watch([availableTags, visibleTagRows], async () => {
             </article>
           </section>
 
-          <div class="pager" v-if="!loading && !error && lastPage > 1">
-            <button type="button" class="ghost-btn" :disabled="page <= 1" @click="goToPage(page - 1)">{{ t('Назад') }}</button>
-            <span>{{ t('Страница') }} {{ page }} / {{ lastPage }}</span>
-            <button type="button" class="ghost-btn" :disabled="page >= lastPage" @click="goToPage(page + 1)">{{ t('Вперёд') }}</button>
-          </div>
+          <PaginationControls
+            v-if="!loading && !error"
+            :page="page"
+            :last-page="lastPage"
+            :disabled="loading"
+            :page-label="t('Страница')"
+            :prev-label="t('Назад')"
+            :next-label="t('Вперёд')"
+            @change="goToPage"
+          />
         </main>
       </div>
     </div>
@@ -1569,14 +1617,6 @@ watch([availableTags, visibleTagRows], async () => {
   border-color: #c8d8cb;
   color: #3e5a49;
   font-weight: 700;
-}
-
-.pager {
-  margin-top: 16px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
 }
 
 .error {
