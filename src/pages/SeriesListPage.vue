@@ -21,6 +21,7 @@ const lastPage = ref(1)
 const loadedPage = ref(0)
 const seriesPreviews = ref({})
 const currentUser = ref(getUser())
+const journalTitleReady = ref(false)
 const calendarMarkedDateKeys = ref([])
 const fetchedTags = ref([])
 const previewGridWidths = ref({})
@@ -102,7 +103,11 @@ let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
   const title = currentUser.value?.journal_title
-  return typeof title === 'string' && title.trim() ? title.trim() : t('Фото Дневник')
+  if (typeof title === 'string' && title.trim()) {
+    return title.trim()
+  }
+
+  return journalTitleReady.value ? t('Фото Дневник') : ''
 })
 
 const availableTags = computed(() => {
@@ -1221,7 +1226,9 @@ async function loadProfileMeta() {
     currentUser.value = user
     setCurrentUser(user)
   } catch (_) {
-    // Keep default title when profile metadata is unavailable.
+    // Fallback title is shown after profile request completes.
+  } finally {
+    journalTitleReady.value = true
   }
 }
 
@@ -1360,7 +1367,7 @@ function toggleMobileFilters() {
   <div class="journal-page">
     <div class="journal-shell">
       <header class="journal-header">
-        <h1>{{ journalTitle }}</h1>
+        <h1>{{ journalTitle || '\u00A0' }}</h1>
 
         <div class="header-actions">
           <button v-if="canCreateSeries" type="button" class="primary-btn" @click="showCreateForm = !showCreateForm">
