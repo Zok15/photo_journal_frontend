@@ -37,6 +37,7 @@ const previewImageLoaded = ref({})
 const expandedSeriesTagCards = ref({})
 const previewGridElements = new Map()
 const showMobileFilters = ref(false)
+const SORT_SESSION_KEY = 'pj_public_series_list_sort'
 const MOBILE_PREVIEW_BREAKPOINT = 1100
 const MOBILE_MAX_PREVIEW_TILES = 12
 const DESKTOP_MAX_PREVIEW_TILES = 12
@@ -53,6 +54,7 @@ const tagsCloudRef = ref(null)
 let previewResizeObserver = null
 let tagsLayoutObserver = null
 let authorSuggestBlurTimerId = null
+let searchDebounceTimer = null
 
 const hasActiveFilters = computed(() => {
   return Boolean(
@@ -104,6 +106,39 @@ const tagCloudStyle = computed(() => {
     maxHeight: `${tagVisibleHeight.value}px`,
   }
 })
+
+function isValidSort(value) {
+  return ['new', 'old', 'taken_new', 'taken_old'].includes(String(value || ''))
+}
+
+const sortSelectOptions = computed(() => ([
+  { value: 'new', label: t('Добавление: новые') },
+  { value: 'old', label: t('Добавление: старые') },
+  { value: 'taken_new', label: t('Съёмка: новые') },
+  { value: 'taken_old', label: t('Съёмка: старые') },
+]))
+
+function persistSortToSession() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.sessionStorage.setItem(SORT_SESSION_KEY, activeSort.value)
+}
+
+function readSortFromSession() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const raw = window.sessionStorage.getItem(SORT_SESSION_KEY) || ''
+  return isValidSort(raw) ? raw : ''
+}
+
+function onSortSelectChanged() {
+  persistSortToSession()
+  loadPublicSeries(1)
+}
 
 function formatDate(value) {
   if (!value) {
@@ -327,6 +362,7 @@ function resetFilters() {
   search.value = ''
   searchInput.value = ''
   activeSort.value = 'new'
+  persistSortToSession()
   dateField.value = 'added'
   selectedTags.value = []
   dateFrom.value = ''
@@ -481,11 +517,6 @@ async function loadPublicSeries(targetPage = 1) {
   }
 }
 
-function submitSearch() {
-  search.value = searchInput.value
-  loadPublicSeries(1)
-}
-
 function goToPage(nextPage) {
   if (loading.value || nextPage < 1 || nextPage > lastPage.value || nextPage === page.value) {
     return
@@ -549,7 +580,7 @@ function collapseTagRows() {
 }
 
 function normalizeSort(value) {
-  return ['new', 'old', 'taken_new', 'taken_old'].includes(value) ? value : 'new'
+  return isValidSort(value) ? value : 'new'
 }
 
 function parseTagQuery(value) {
@@ -569,7 +600,11 @@ function parseTagQuery(value) {
 function applyFiltersFromQuery(query = {}) {
   search.value = String(query.search || '').trim()
   searchInput.value = search.value
-  activeSort.value = normalizeSort(String(query.sort || '').trim())
+  const querySort = normalizeSort(String(query.sort || '').trim())
+  const hasQuerySort = isValidSort(String(query.sort || '').trim())
+  const sessionSort = readSortFromSession()
+  activeSort.value = hasQuerySort ? querySort : (sessionSort || 'new')
+  persistSortToSession()
   dateField.value = ['added', 'taken'].includes(String(query.date_field || '').trim())
     ? String(query.date_field || '').trim()
     : 'added'
@@ -626,6 +661,10 @@ onBeforeUnmount(() => {
     clearTimeout(authorSuggestBlurTimerId)
     authorSuggestBlurTimerId = null
   }
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = null
+  }
 
   window.removeEventListener('resize', syncPreviewViewportMode)
   previewGridElements.clear()
@@ -658,6 +697,25 @@ watch(
   },
   { immediate: true },
 )
+
+watch(activeSort, () => {
+  persistSortToSession()
+})
+
+watch(searchInput, (value) => {
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+  }
+
+  searchDebounceTimer = window.setTimeout(() => {
+    const nextSearch = String(value || '').trim()
+    if (nextSearch === search.value.trim()) {
+      return
+    }
+    search.value = nextSearch
+    loadPublicSeries(1)
+  }, 300)
+})
 
 watch([availableTags, visibleTagRows], async () => {
   await nextTick()
@@ -696,13 +754,7 @@ watch([availableTags, visibleTagRows], async () => {
         </div>
 
         <aside class="filters-panel" :class="{ 'filters-panel--mobile-open': showMobileFilters }">
-          <section class="filter-group">
-            <h3>{{ t('Поиск') }}</h3>
-            <form class="search-form" @submit.prevent="submitSearch">
-              <input v-model="searchInput" type="text" :placeholder="t('Название или описание')" />
-              <button type="submit" class="ghost-btn">{{ t('Найти') }}</button>
-            </form>
-          </section>
+          <h2>{{ t('Фильтры') }}</h2>
 
           <section class="filter-group">
             <h3>{{ t('Автор') }}</h3>
@@ -808,34 +860,21 @@ watch([availableTags, visibleTagRows], async () => {
             </div>
           </section>
 
-          <section class="filter-group">
-            <h3>{{ t('Сортировка') }}</h3>
-            <div class="chip-row">
-              <span class="sort-group-label">{{ t('По дате добавления') }}</span>
-              <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'; loadPublicSeries(1)">
-                {{ t('Новые') }}
-              </button>
-              <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'; loadPublicSeries(1)">
-                {{ t('Старые') }}
-              </button>
-            </div>
-            <div class="chip-row sort-row-secondary">
-              <span class="sort-group-label">{{ t('По дате съёмки') }}</span>
-              <button type="button" class="chip" :class="{ active: activeSort === 'taken_new' }" @click="activeSort = 'taken_new'; loadPublicSeries(1)">
-                {{ t('Новые') }}
-              </button>
-              <button type="button" class="chip" :class="{ active: activeSort === 'taken_old' }" @click="activeSort = 'taken_old'; loadPublicSeries(1)">
-                {{ t('Старые') }}
-              </button>
-            </div>
-          </section>
-
           <button v-if="hasActiveFilters" type="button" class="ghost-btn reset-btn" @click="resetFilters">
             {{ t('Сбросить фильтры') }}
           </button>
         </aside>
 
         <main class="content-panel">
+          <section class="search-row">
+            <input v-model="searchInput" type="text" :placeholder="t('Искать по названию и описанию...')" />
+            <select v-model="activeSort" class="search-sort-select" @change="onSortSelectChanged">
+              <option v-for="option in sortSelectOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </section>
+
           <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
           <p v-else-if="error" class="error">{{ error }}</p>
           <p v-else-if="!series.length" class="state-text">{{ t('Серии в галерее не найдены.') }}</p>
@@ -958,6 +997,8 @@ watch([availableTags, visibleTagRows], async () => {
     radial-gradient(700px 220px at 15% 0%, rgba(183, 201, 190, 0.35), transparent 65%),
     radial-gradient(860px 260px at 100% 15%, rgba(218, 206, 188, 0.28), transparent 70%),
     #f4f5f2;
+  color: var(--text);
+  font-family: 'Manrope', 'Trebuchet MS', 'Verdana', sans-serif;
 }
 
 .public-shell {
@@ -1016,35 +1057,40 @@ watch([availableTags, visibleTagRows], async () => {
 }
 
 .filters-panel {
-  padding: 16px;
-  border-right: 1px solid #dde0d9;
-  background: #f7f8f4;
+  border-right: 1px solid var(--line);
+  padding: 20px;
+  background: transparent;
+}
+
+.filters-panel h2 {
+  margin: 0 0 20px;
+  font-size: 28px;
 }
 
 .filter-group + .filter-group {
-  margin-top: 14px;
+  margin-top: 0;
+}
+
+.filter-group {
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--line);
 }
 
 .filter-group h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  color: #55615a;
+  margin: 0 0 10px;
+  font-size: 19px;
 }
 
-.search-form {
-  display: grid;
-  gap: 8px;
-}
-
-.search-form input,
 .author-search-input,
 .date-label input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #dde0d9;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  padding: 9px 10px;
+  background: #f9faf8;
+  color: var(--text);
+  padding: 8px 9px;
+  font-size: 14px;
 }
 
 .author-search-input {
@@ -1115,25 +1161,15 @@ watch([availableTags, visibleTagRows], async () => {
 .date-label {
   display: grid;
   gap: 4px;
-  margin-top: 6px;
-  color: #617067;
+  margin-top: 10px;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.sort-row-secondary {
-  margin-top: 8px;
-}
-
-.sort-group-label {
-  width: 100%;
-  font-size: 12px;
-  color: #71807a;
+  gap: 8px;
 }
 
 .tags-cloud-shell {
@@ -1222,11 +1258,11 @@ watch([availableTags, visibleTagRows], async () => {
 
 .chip,
 .ghost-btn {
-  border: 1px solid #d6dbd4;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: #edf1ec;
-  color: #35403a;
-  padding: 7px 11px;
+  background: var(--chip);
+  color: var(--text);
+  padding: 8px 11px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1247,7 +1283,61 @@ watch([availableTags, visibleTagRows], async () => {
 }
 
 .content-panel {
-  padding: 18px;
+  padding: 20px;
+}
+
+.search-row {
+  margin-bottom: 14px;
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 10px;
+  align-items: center;
+}
+
+.search-row input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f9faf8;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+
+.search-sort-select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f9faf8;
+  color: #5a6960;
+  padding: 11px 40px 11px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  box-shadow: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9aa59e 50%),
+    linear-gradient(135deg, #9aa59e 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.search-sort-select:focus {
+  border-color: var(--line);
+  outline: none;
+  box-shadow: none;
 }
 
 .series-grid {
@@ -1467,7 +1557,7 @@ watch([availableTags, visibleTagRows], async () => {
   color: #a24949;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .public-layout {
     grid-template-columns: 1fr;
   }
@@ -1476,7 +1566,7 @@ watch([availableTags, visibleTagRows], async () => {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin: 14px 16px 0;
+    margin: 14px 20px 0;
   }
 
   .filters-panel {
@@ -1487,6 +1577,10 @@ watch([availableTags, visibleTagRows], async () => {
 
   .filters-panel.filters-panel--mobile-open {
     display: block;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
   }
 
   .series-card h2 {

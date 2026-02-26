@@ -42,6 +42,7 @@ const syncingQueryState = ref(false)
 const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
 const PHOTO_UPLOAD_CHUNK_SIZE = 3
+const SORT_SESSION_KEY = 'pj_series_list_sort'
 const MOBILE_PREVIEW_BREAKPOINT = 1100
 const MOBILE_MAX_PREVIEW_TILES = 12
 const DESKTOP_MAX_PREVIEW_TILES = 12
@@ -168,6 +169,34 @@ const tagCloudStyle = computed(() => {
   }
 })
 
+function isValidSort(value) {
+  return ['new', 'old', 'taken_new', 'taken_old'].includes(String(value || ''))
+}
+
+const sortSelectOptions = computed(() => ([
+  { value: 'new', label: t('Добавление: новые') },
+  { value: 'old', label: t('Добавление: старые') },
+  { value: 'taken_new', label: t('Съёмка: новые') },
+  { value: 'taken_old', label: t('Съёмка: старые') },
+]))
+
+function persistSortToSession() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.sessionStorage.setItem(SORT_SESSION_KEY, activeSort.value)
+}
+
+function readSortFromSession() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const raw = window.sessionStorage.getItem(SORT_SESSION_KEY) || ''
+  return isValidSort(raw) ? raw : ''
+}
+
 function toLocalDateKey(input) {
   const date = input instanceof Date ? input : new Date(input)
   if (Number.isNaN(date.getTime())) {
@@ -290,8 +319,11 @@ function applyRouteQuery(query) {
     search.value = nextSearch
     searchInput.value = nextSearch
 
-    const nextSort = typeof query.sort === 'string' && ['new', 'old', 'taken_new', 'taken_old'].includes(query.sort) ? query.sort : 'new'
+    const querySort = typeof query.sort === 'string' ? query.sort : ''
+    const sessionSort = readSortFromSession()
+    const nextSort = isValidSort(querySort) ? querySort : (sessionSort || 'new')
     activeSort.value = nextSort
+    persistSortToSession()
     const nextDateField = typeof query.date_field === 'string' && ['added', 'taken'].includes(query.date_field) ? query.date_field : 'added'
     dateField.value = nextDateField
 
@@ -1307,6 +1339,10 @@ watch(() => route.query, (query) => {
   loadSeries(page.value)
 })
 
+watch(activeSort, () => {
+  persistSortToSession()
+})
+
 watch(searchInput, (value) => {
   if (searchDebounceTimer !== null) {
     clearTimeout(searchDebounceTimer)
@@ -1587,27 +1623,6 @@ function toggleMobileFilters() {
             </div>
           </section>
 
-          <section class="filter-group">
-            <h3>{{ t('Сортировка') }}</h3>
-            <div class="chip-row chip-row-wrap">
-              <span class="sort-group-label">{{ t('По дате добавления') }}</span>
-              <button type="button" class="chip" :class="{ active: activeSort === 'new' }" @click="activeSort = 'new'">
-                {{ t('Новые') }}
-              </button>
-              <button type="button" class="chip" :class="{ active: activeSort === 'old' }" @click="activeSort = 'old'">
-                {{ t('Старые') }}
-              </button>
-            </div>
-            <div class="chip-row chip-row-wrap sort-row-secondary">
-              <span class="sort-group-label">{{ t('По дате съёмки') }}</span>
-              <button type="button" class="chip" :class="{ active: activeSort === 'taken_new' }" @click="activeSort = 'taken_new'">
-                {{ t('Новые') }}
-              </button>
-              <button type="button" class="chip" :class="{ active: activeSort === 'taken_old' }" @click="activeSort = 'taken_old'">
-                {{ t('Старые') }}
-              </button>
-            </div>
-          </section>
         </aside>
 
         <main class="content-panel">
@@ -1660,6 +1675,11 @@ function toggleMobileFilters() {
 
           <section class="search-row">
             <input v-model="searchInput" type="text" :placeholder="t('Искать по названию и описанию...')" />
+            <select v-model="activeSort" class="search-sort-select">
+              <option v-for="option in sortSelectOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
           </section>
 
           <p v-if="loading" class="state-text">{{ t('Загрузка...') }}</p>
@@ -2335,6 +2355,10 @@ function toggleMobileFilters() {
   margin-bottom: 14px;
   width: 100%;
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 10px;
+  align-items: center;
 }
 
 .search-row input {
@@ -2347,6 +2371,38 @@ function toggleMobileFilters() {
   background: #f9faf8;
   padding: 12px 14px;
   font-size: 16px;
+}
+
+.search-sort-select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f9faf8;
+  color: #5a6960;
+  padding: 11px 40px 11px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  box-shadow: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9aa59e 50%),
+    linear-gradient(135deg, #9aa59e 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.search-sort-select:focus {
+  border-color: var(--line);
+  outline: none;
+  box-shadow: none;
 }
 
 .series-grid {
@@ -2621,6 +2677,10 @@ function toggleMobileFilters() {
 
   .preview-tile-image {
     object-fit: contain;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
   }
 }
 
