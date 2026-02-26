@@ -10,6 +10,10 @@ export function buildPreviewRowsWithClampedHeights(
   const mobileMinPerRow = Number.isFinite(options.mobileMinPerRow) ? options.mobileMinPerRow : minPerRow
   const mobileMaxPerRow = Number.isFinite(options.mobileMaxPerRow) ? options.mobileMaxPerRow : maxPerRow
   const mobileBreakPoint = Number.isFinite(options.mobileBreakPoint) ? options.mobileBreakPoint : 760
+  const strictRatioOnMobile = options.strictRatioOnMobile === true
+  const forceMobileLayout = typeof options.forceMobileLayout === 'boolean'
+    ? options.forceMobileLayout
+    : null
   const targetRowHeight = Number.isFinite(options.targetRowHeight) ? options.targetRowHeight : 170
   const minRowHeight = Number.isFinite(options.minRowHeight) ? options.minRowHeight : 96
   const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 260
@@ -20,14 +24,17 @@ export function buildPreviewRowsWithClampedHeights(
   const fallbackHeight = Number.isFinite(options.fallbackHeight) ? options.fallbackHeight : 160
 
   const width = Math.max(1, Number(containerWidth) || 1)
-  const useMobileLayout = width <= mobileBreakPoint
+  const useMobileLayout = forceMobileLayout === null ? width <= mobileBreakPoint : forceMobileLayout
   const effectiveMinPerRow = useMobileLayout ? mobileMinPerRow : minPerRow
   const effectiveMaxPerRow = useMobileLayout ? mobileMaxPerRow : maxPerRow
   const items = (Array.isArray(photos) ? photos : []).map((photo) => {
     const rawRatio = Number(aspectRatioById?.[photo?.id]) || 1
+    const ratio = strictRatioOnMobile && useMobileLayout
+      ? (rawRatio > 0 ? rawRatio : 1)
+      : Math.min(maxPreviewRatio, Math.max(minPreviewRatio, rawRatio))
     return {
       photo,
-      ratio: Math.min(maxPreviewRatio, Math.max(minPreviewRatio, rawRatio)),
+      ratio,
     }
   })
 

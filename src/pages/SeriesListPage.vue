@@ -41,6 +41,8 @@ const syncingQueryState = ref(false)
 const LIST_STATUS_POLL_INTERVAL_MS = 5000
 const LIST_STATUS_POLL_RETRY_MS = 9000
 const PHOTO_UPLOAD_CHUNK_SIZE = 3
+const MOBILE_PREVIEW_BREAKPOINT = 960
+const MOBILE_MAX_PREVIEW_TILES = 8
 
 const route = useRoute()
 const router = useRouter()
@@ -91,6 +93,9 @@ const tagsCloudRef = ref(null)
 const tagSearchInputRef = ref(null)
 const showTagSearch = ref(false)
 const tagSearchQuery = ref('')
+const isMobilePreviewViewport = ref(
+  typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,
+)
 let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
@@ -483,7 +488,12 @@ function publicPhotoUrl(photo) {
 }
 
 function previewTiles(seriesId) {
-  return seriesPreviews.value[seriesId] || []
+  const tiles = seriesPreviews.value[seriesId] || []
+  if (!isMobilePreviewViewport.value) {
+    return tiles
+  }
+
+  return tiles.slice(0, MOBILE_MAX_PREVIEW_TILES)
 }
 
 function previewOverflowCount(item) {
@@ -547,6 +557,14 @@ function setPreviewGridRef(seriesId, element) {
   }
 }
 
+function syncPreviewViewportMode() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  isMobilePreviewViewport.value = window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT
+}
+
 const previewRowsBySeries = computed(() => {
   const map = {}
 
@@ -570,9 +588,11 @@ const previewRowsBySeries = computed(() => {
         gap: 8,
         minPerRow: 2,
         maxPerRow: 5,
-        mobileMinPerRow: 1,
-        mobileMaxPerRow: 2,
-        mobileBreakPoint: 760,
+        mobileMinPerRow: 3,
+        mobileMaxPerRow: 4,
+        mobileBreakPoint: MOBILE_PREVIEW_BREAKPOINT,
+        strictRatioOnMobile: true,
+        forceMobileLayout: isMobilePreviewViewport.value,
         targetRowHeight: 170,
         minRowHeight: 96,
         maxRowHeight: 260,
@@ -1200,6 +1220,8 @@ onMounted(() => {
 
   window.addEventListener('pointerdown', onGlobalPointerDown)
   window.addEventListener('keydown', onGlobalKeyDown)
+  window.addEventListener('resize', syncPreviewViewportMode)
+  syncPreviewViewportMode()
 
   applyRouteQuery(route.query)
   loadSeries(page.value || 1)
@@ -1226,6 +1248,7 @@ onBeforeUnmount(() => {
 
   window.removeEventListener('pointerdown', onGlobalPointerDown)
   window.removeEventListener('keydown', onGlobalKeyDown)
+  window.removeEventListener('resize', syncPreviewViewportMode)
 })
 
 watch(() => route.query, (query) => {

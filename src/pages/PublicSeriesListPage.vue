@@ -36,6 +36,11 @@ const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const previewGridElements = new Map()
 const showMobileFilters = ref(false)
+const MOBILE_PREVIEW_BREAKPOINT = 960
+const MOBILE_MAX_PREVIEW_TILES = 8
+const isMobilePreviewViewport = ref(
+  typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,
+)
 const TAG_ROWS_INITIAL = 4
 const TAG_ROWS_STEP = 10
 const visibleTagRows = ref(TAG_ROWS_INITIAL)
@@ -153,7 +158,12 @@ const seriesPreviews = computed(() => {
 })
 
 function previewTiles(seriesId) {
-  return seriesPreviews.value[seriesId] || []
+  const tiles = seriesPreviews.value[seriesId] || []
+  if (!isMobilePreviewViewport.value) {
+    return tiles
+  }
+
+  return tiles.slice(0, MOBILE_MAX_PREVIEW_TILES)
 }
 
 function previewOverflowCount(item) {
@@ -189,6 +199,14 @@ function setPreviewGridRef(seriesId, element) {
   if (previewResizeObserver) {
     previewResizeObserver.observe(element)
   }
+}
+
+function syncPreviewViewportMode() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  isMobilePreviewViewport.value = window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT
 }
 
 function isPreviewImageLoaded(photoId) {
@@ -230,9 +248,11 @@ const previewRowsBySeries = computed(() => {
         gap: 8,
         minPerRow: 2,
         maxPerRow: 5,
-        mobileMinPerRow: 1,
-        mobileMaxPerRow: 2,
-        mobileBreakPoint: 760,
+        mobileMinPerRow: 3,
+        mobileMaxPerRow: 4,
+        mobileBreakPoint: MOBILE_PREVIEW_BREAKPOINT,
+        strictRatioOnMobile: true,
+        forceMobileLayout: isMobilePreviewViewport.value,
         targetRowHeight: 170,
         minRowHeight: 96,
         maxRowHeight: 260,
@@ -540,6 +560,9 @@ onMounted(() => {
   if (tagsCloudRef.value) {
     tagsLayoutObserver.observe(tagsCloudRef.value)
   }
+
+  window.addEventListener('resize', syncPreviewViewportMode)
+  syncPreviewViewportMode()
 })
 
 onBeforeUnmount(() => {
@@ -558,6 +581,7 @@ onBeforeUnmount(() => {
     authorSuggestBlurTimerId = null
   }
 
+  window.removeEventListener('resize', syncPreviewViewportMode)
   previewGridElements.clear()
 })
 
