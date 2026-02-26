@@ -153,6 +153,9 @@ export function buildPreviewRowsWithHeroPattern(
   const ratioFallback = Number.isFinite(options.ratioFallback) ? options.ratioFallback : 1
   const minRatio = Number.isFinite(options.minRatio) ? options.minRatio : null
   const maxRatio = Number.isFinite(options.maxRatio) ? options.maxRatio : null
+  const rowHeightUniformityWeight = Number.isFinite(options.rowHeightUniformityWeight)
+    ? Number(options.rowHeightUniformityWeight)
+    : 1
   const rebalanceRows = options.rebalanceRows === true
 
   const items = (Array.isArray(photos) ? photos : [])
@@ -300,7 +303,10 @@ export function buildPreviewRowsWithHeroPattern(
     const variance = heights.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / heights.length
     const stdDev = Math.sqrt(variance)
     const clampPenalty = Math.abs(rawGap - gap) * 1.8
-    const score = Math.abs(gap - targetGap) * 2.4 + stdDev + clampPenalty + (chunk.length * 0.05)
+    const score = Math.abs(gap - targetGap) * 2.4
+      + (stdDev * rowHeightUniformityWeight)
+      + clampPenalty
+      + (chunk.length * 0.05)
 
     if (!best || score < best.score) {
       best = { score, rows: preparedRows }
