@@ -276,6 +276,8 @@ const previewRowsBySeries = computed(() => {
     const minGap = isMobilePreviewViewport.value ? 4 : 6
     const maxGap = isMobilePreviewViewport.value ? 7 : 10
     const targetGap = isMobilePreviewViewport.value ? 6 : 8
+    const minRowHeight = isMobilePreviewViewport.value ? 110 : 128
+    const maxRowHeight = isMobilePreviewViewport.value ? 220 : 238
     const targetTotalHeight = isMobilePreviewViewport.value
       ? Math.max(210, Math.min(420, width * 0.7))
       : Math.max(320, Math.min(580, width * 0.58))
@@ -293,8 +295,8 @@ const previewRowsBySeries = computed(() => {
         targetTotalHeight,
         minGap,
         maxGap,
-        minRowHeight: 96,
-        maxRowHeight: 260,
+        minRowHeight,
+        maxRowHeight,
         targetGap,
         ratioFallback: 1,
         fallbackGap: targetGap,
