@@ -458,6 +458,8 @@ export function buildPreviewRowsWithDynamicGrid(
 
   const rows = []
   const fullRowHeights = []
+  let laidOutTileWidthSum = 0
+  let laidOutTileCount = 0
   let cursor = 0
 
   while (cursor + targetPerRow <= items.length) {
@@ -476,6 +478,10 @@ export function buildPreviewRowsWithDynamicGrid(
         width: item.ratio * rowHeight,
       })),
     })
+    chunk.forEach((item) => {
+      laidOutTileWidthSum += item.ratio * rowHeight
+      laidOutTileCount += 1
+    })
   }
 
   const tail = cursor < items.length ? items.slice(cursor) : []
@@ -489,12 +495,25 @@ export function buildPreviewRowsWithDynamicGrid(
     const desiredTailHeight = stretchLastRow
       ? fittedTailHeight
       : Math.min(fittedTailHeight, averageHeight)
-    const tailHeight = clampRowHeights
+    const isSingleTailTile = tail.length === 1
+    let tailHeight = clampRowHeights
       ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
       : desiredTailHeight
 
+    if (isSingleTailTile) {
+      const ratio = tail[0]?.ratio || 1
+      const averageTileWidth = laidOutTileCount > 0
+        ? (laidOutTileWidthSum / laidOutTileCount)
+        : Math.min(maxTileWidth, width)
+      const targetTileWidth = Math.min(
+        Math.max(minTileWidth, averageTileWidth),
+        maxTileWidth,
+      )
+      tailHeight = Math.max(1, Math.min(width, targetTileWidth)) / ratio
+    }
+
     rows.push({
-      gap: previewGap,
+      gap: isSingleTailTile ? 0 : previewGap,
       height: tailHeight,
       tiles: tail.map((item) => ({
         photo: item.photo,
