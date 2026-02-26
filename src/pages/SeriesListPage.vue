@@ -1675,7 +1675,10 @@ function toggleMobileFilters() {
                   >
                     <img
                       class="preview-tile-image"
-                      :class="{ 'preview-tile-image--loaded': isPreviewImageLoaded(tile.photo.id) }"
+                      :class="{
+                        'preview-tile-image--loaded': isPreviewImageLoaded(tile.photo.id),
+                        'preview-tile-image--contain': isMobilePreviewViewport,
+                      }"
                       :src="tile.photo.src"
                       :alt="tile.photo.alt"
                       @load="markPreviewImageLoaded(tile.photo.id)"
@@ -2470,6 +2473,10 @@ function toggleMobileFilters() {
 .preview-tile-image--loaded {
   opacity: 1;
   transform: none;
+}
+
+.preview-tile-image--contain {
+  object-fit: contain !important;
 }
 
 @keyframes preview-tile-shimmer {
