@@ -2355,7 +2355,7 @@ watch(previewGridRef, () => {
   background: #fcfdfb;
   border-radius: 0 0 10px 10px;
   z-index: 2;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .preview-card-meta span {
