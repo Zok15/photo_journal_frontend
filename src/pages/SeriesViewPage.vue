@@ -407,11 +407,8 @@ const previewRows = computed(() => {
       maxTileWidthMobile: 340,
       maxTileWidthDesktop: 420,
       mobileBreakPoint: 760,
-      targetRowHeight: 300,
-      minRowHeight: 210,
-      maxRowHeight: 420,
-      singleMaxHeight: 300,
-      stretchLastRow: false,
+      stretchLastRow: true,
+      clampRowHeights: false,
     },
   ).rows
 })
@@ -1486,7 +1483,7 @@ async function loadSeries(options = {}) {
       try {
         const response = await api.get(`/series/${route.params.slug}`, {
           params: includePhotos
-            ? { include_photos: 1 }
+            ? { include_photos: 1, photos_limit: 100 }
             : {
               status_only: 1,
               include_blocking_tags: canViewModerationTags.value ? 1 : 0,
@@ -1503,7 +1500,7 @@ async function loadSeries(options = {}) {
     if (!data) {
       const response = await api.get(`/public/series/${route.params.slug}`, {
         params: includePhotos
-          ? { include_photos: 1 }
+          ? { include_photos: 1, photos_limit: 100 }
           : {
             status_only: 1,
             include_blocking_tags: canViewModerationTags.value ? 1 : 0,
@@ -2358,6 +2355,7 @@ watch(previewGridRef, () => {
   background: #fcfdfb;
   border-radius: 0 0 10px 10px;
   z-index: 2;
+  overflow: hidden;
 }
 
 .preview-card-meta span {
@@ -2390,8 +2388,8 @@ watch(previewGridRef, () => {
   display: inline-flex;
   flex-wrap: nowrap;
   gap: 6px;
-  flex: 0 0 auto;
   justify-self: end;
+  align-items: center;
   max-width: 100%;
 }
 

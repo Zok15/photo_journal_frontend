@@ -420,6 +420,7 @@ export function buildPreviewRowsWithDynamicGrid(
   const maxRowHeight = Number.isFinite(options.maxRowHeight) ? options.maxRowHeight : 420
   const singleMaxHeight = Number.isFinite(options.singleMaxHeight) ? options.singleMaxHeight : 300
   const stretchLastRow = options.stretchLastRow !== false
+  const clampRowHeights = options.clampRowHeights !== false
 
   const width = Math.max(1, Number(containerWidth) || 1)
   const isMobile = width <= mobileBreakPoint
@@ -488,7 +489,9 @@ export function buildPreviewRowsWithDynamicGrid(
     const desiredTailHeight = stretchLastRow
       ? fittedTailHeight
       : Math.min(fittedTailHeight, averageHeight)
-    const tailHeight = Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
+    const tailHeight = clampRowHeights
+      ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
+      : desiredTailHeight
 
     rows.push({
       gap: previewGap,
