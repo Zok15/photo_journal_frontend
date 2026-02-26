@@ -616,7 +616,7 @@ const previewRowsBySeries = computed(() => {
     }
 
     const width = previewGridWidths.value[seriesId] || 920
-    const minPerRow = isMobilePreviewViewport.value ? 3 : 2
+    const minPerRow = 3
     const maxPerRow = isMobilePreviewViewport.value ? 4 : 5
     const minGap = isMobilePreviewViewport.value ? 4 : 6
     const maxGap = isMobilePreviewViewport.value ? 7 : 10
@@ -641,7 +641,7 @@ const previewRowsBySeries = computed(() => {
         minRowHeight: 96,
         maxRowHeight: 260,
         targetGap,
-        minRatio: 0.82,
+        minRatio: 1,
         maxRatio: 2.2,
         ratioFallback: 1,
         fallbackGap: targetGap,
