@@ -462,64 +462,88 @@ export function buildPreviewRowsWithDynamicGrid(
   let laidOutTileCount = 0
   let cursor = 0
 
-  while (cursor + targetPerRow <= items.length) {
-    const chunk = items.slice(cursor, cursor + targetPerRow)
-    cursor += targetPerRow
+  const getFittedRowHeight = (chunk, gap) => {
     const ratioSum = chunk.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
-    const rowWidth = width - previewGap * (chunk.length - 1)
-    const rowHeight = rowWidth / ratioSum
-
-    fullRowHeights.push(rowHeight)
-    rows.push({
-      gap: previewGap,
-      height: rowHeight,
-      tiles: chunk.map((item) => ({
-        photo: item.photo,
-        width: item.ratio * rowHeight,
-      })),
-    })
-    chunk.forEach((item) => {
-      laidOutTileWidthSum += item.ratio * rowHeight
-      laidOutTileCount += 1
-    })
+    const rowWidth = width - gap * (chunk.length - 1)
+    return rowWidth / ratioSum
   }
 
-  const tail = cursor < items.length ? items.slice(cursor) : []
-  if (tail.length > 0) {
-    const ratioSum = tail.reduce((sum, item) => sum + item.ratio, 0) || 0.0001
-    const fittedTailHeight = (width - previewGap * (tail.length - 1)) / ratioSum
-    const averageHeight = fullRowHeights.length
-      ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
-      : targetRowHeight
+  const minTileWidthInRow = (chunk, rowHeight) => {
+    let minWidth = Number.POSITIVE_INFINITY
+    for (const item of chunk) {
+      const tileWidth = item.ratio * rowHeight
+      if (tileWidth < minWidth) {
+        minWidth = tileWidth
+      }
+    }
+    return Number.isFinite(minWidth) ? minWidth : 0
+  }
 
-    const desiredTailHeight = stretchLastRow
-      ? fittedTailHeight
-      : Math.min(fittedTailHeight, averageHeight)
-    const isSingleTailTile = tail.length === 1
-    let tailHeight = clampRowHeights
-      ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
-      : desiredTailHeight
+  while (cursor < items.length) {
+    const remaining = items.length - cursor
+    const maxCountForRow = Math.min(clampedMaxPerRow, remaining)
+    let chosenCount = Math.min(targetPerRow, maxCountForRow)
 
-    if (isSingleTailTile) {
-      const ratio = tail[0]?.ratio || 1
-      const averageTileWidth = laidOutTileCount > 0
-        ? (laidOutTileWidthSum / laidOutTileCount)
-        : Math.min(maxTileWidth, width)
-      const targetTileWidth = Math.min(
-        Math.max(minTileWidth, averageTileWidth),
-        maxTileWidth,
-      )
-      tailHeight = Math.max(1, Math.min(width, targetTileWidth)) / ratio
+    while (chosenCount > 1) {
+      const chunk = items.slice(cursor, cursor + chosenCount)
+      const rowHeight = getFittedRowHeight(chunk, previewGap)
+      if (minTileWidthInRow(chunk, rowHeight) >= minTileWidth) {
+        break
+      }
+      chosenCount -= 1
     }
 
+    const chunk = items.slice(cursor, cursor + chosenCount)
+    const isSingleRowTile = chosenCount === 1
+    const isLastRow = cursor + chosenCount >= items.length
+    const gap = isSingleRowTile ? 0 : previewGap
+    const fittedHeight = getFittedRowHeight(chunk, gap)
+
+    let rowHeight = fittedHeight
+    if (isLastRow) {
+      const averageHeight = fullRowHeights.length
+        ? fullRowHeights.reduce((sum, value) => sum + value, 0) / fullRowHeights.length
+        : targetRowHeight
+      const desiredTailHeight = stretchLastRow
+        ? fittedHeight
+        : Math.min(fittedHeight, averageHeight)
+
+      rowHeight = clampRowHeights
+        ? Math.max(minRowHeight, Math.min(maxRowHeight, desiredTailHeight))
+        : desiredTailHeight
+
+      if (isSingleRowTile) {
+        const ratio = chunk[0]?.ratio || 1
+        const averageTileWidth = laidOutTileCount > 0
+          ? (laidOutTileWidthSum / laidOutTileCount)
+          : Math.min(maxTileWidth, width)
+        const targetTileWidth = Math.min(
+          Math.max(minTileWidth, averageTileWidth),
+          maxTileWidth,
+        )
+        rowHeight = Math.max(1, Math.min(width, targetTileWidth)) / ratio
+      }
+    } else {
+      fullRowHeights.push(rowHeight)
+    }
+
+    const tiles = chunk.map((item) => ({
+      photo: item.photo,
+      width: item.ratio * rowHeight,
+    }))
+
     rows.push({
-      gap: isSingleTailTile ? 0 : previewGap,
-      height: tailHeight,
-      tiles: tail.map((item) => ({
-        photo: item.photo,
-        width: item.ratio * tailHeight,
-      })),
+      gap,
+      height: rowHeight,
+      tiles,
     })
+
+    tiles.forEach((tile) => {
+      laidOutTileWidthSum += tile.width
+      laidOutTileCount += 1
+    })
+
+    cursor += chosenCount
   }
 
   return { rows }
