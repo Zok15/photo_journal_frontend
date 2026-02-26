@@ -2209,6 +2209,17 @@ watch(previewGridRef, () => {
   --thumb-min-height: 0px;
 }
 
+.preview-card-image :deep(.thumb-wrap) {
+  height: 100%;
+  min-height: 0;
+}
+
+.preview-card-image :deep(.thumb) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .preview-card-meta {
   position: relative;
   display: grid;
@@ -2436,8 +2447,7 @@ watch(previewGridRef, () => {
   }
 
   .preview-card-image-wrap {
-    height: auto !important;
-    aspect-ratio: 4 / 3;
+    min-height: 180px;
   }
 
   .preview-card-meta {
