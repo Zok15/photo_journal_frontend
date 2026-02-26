@@ -167,9 +167,12 @@ const heroRows = computed(() => {
     maxCount: 18,
     minPerRow: 2,
     maxPerRow: 7,
+    minGap: 4,
+    maxGap: 10,
     minRowHeight: 70,
     maxRowHeight: 320,
     targetGap: 8,
+    rebalanceRows: true,
   }).rows
 })
 

@@ -145,9 +145,11 @@ export function buildPreviewRowsWithHeroPattern(
   const maxPerRow = Number.isFinite(options.maxPerRow) ? options.maxPerRow : 7
   const fallbackGap = Number.isFinite(options.fallbackGap) ? options.fallbackGap : 8
   const fallbackMaxTiles = Number.isFinite(options.fallbackMaxTiles) ? options.fallbackMaxTiles : 6
+  const fallbackMinRows = Number.isFinite(options.fallbackMinRows) ? options.fallbackMinRows : 1
   const minCountOption = Number.isFinite(options.minCount) ? options.minCount : 4
   const maxCountOption = Number.isFinite(options.maxCount) ? options.maxCount : 18
   const ratioFallback = Number.isFinite(options.ratioFallback) ? options.ratioFallback : 1
+  const rebalanceRows = options.rebalanceRows === true
 
   const items = (Array.isArray(photos) ? photos : [])
     .map((photo) => ({
@@ -164,20 +166,95 @@ export function buildPreviewRowsWithHeroPattern(
   const minCount = Math.max(1, Math.min(maxCount, minCountOption))
   let best = null
 
-  function evaluateCandidate(chunk, rowCounts) {
+  function buildRowsForCounts(chunk, rowCounts) {
+    if (!rebalanceRows) {
+      const rows = []
+      let cursor = 0
+      for (const count of rowCounts) {
+        const rowItems = chunk.slice(cursor, cursor + count)
+        cursor += count
+        const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0)
+        rows.push({
+          items: rowItems,
+          count,
+          ratioSum: ratioSum || 0.0001,
+        })
+      }
+      return rows
+    }
+
     const rows = []
     let cursor = 0
-
     for (const count of rowCounts) {
       const rowItems = chunk.slice(cursor, cursor + count)
       cursor += count
-      const ratioSum = rowItems.reduce((sum, item) => sum + item.ratio, 0)
       rows.push({
         items: rowItems,
         count,
-        ratioSum: ratioSum || 0.0001,
+        ratioSum: rowItems.reduce((sum, item) => sum + item.ratio, 0) || 0.0001,
       })
     }
+
+    const rowWidth = (count) => Math.max(1, width - targetGap * (count - 1))
+    const loadSpread = (currentRows) => {
+      if (!currentRows.length) {
+        return 0
+      }
+      const loads = currentRows.map((row) => row.ratioSum / rowWidth(row.count))
+      const mean = loads.reduce((sum, value) => sum + value, 0) / loads.length
+      const variance = loads.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / loads.length
+      return Math.sqrt(variance)
+    }
+
+    let baseline = loadSpread(rows)
+    let improved = true
+    let iterations = 0
+    const maxIterations = Math.max(2, rows.length * 4)
+
+    while (improved && iterations < maxIterations) {
+      improved = false
+      iterations += 1
+
+      for (let rowIndex = 0; rowIndex < rows.length - 1; rowIndex += 1) {
+        const left = rows[rowIndex]
+        const right = rows[rowIndex + 1]
+        if (!left.items.length || !right.items.length) {
+          continue
+        }
+
+        const leftCandidate = left.items[left.items.length - 1]
+        const rightCandidate = right.items[0]
+        const nextLeftRatio = left.ratioSum - leftCandidate.ratio + rightCandidate.ratio
+        const nextRightRatio = right.ratioSum - rightCandidate.ratio + leftCandidate.ratio
+
+        const candidateRows = rows.map((row, index) => {
+          if (index === rowIndex) {
+            return { ...row, ratioSum: nextLeftRatio || 0.0001 }
+          }
+          if (index === rowIndex + 1) {
+            return { ...row, ratioSum: nextRightRatio || 0.0001 }
+          }
+          return row
+        })
+        const candidateSpread = loadSpread(candidateRows)
+        if (candidateSpread + 0.0001 >= baseline) {
+          continue
+        }
+
+        left.items[left.items.length - 1] = rightCandidate
+        right.items[0] = leftCandidate
+        left.ratioSum = nextLeftRatio || 0.0001
+        right.ratioSum = nextRightRatio || 0.0001
+        baseline = candidateSpread
+        improved = true
+      }
+    }
+
+    return rows
+  }
+
+  function evaluateCandidate(chunk, rowCounts) {
+    const rows = buildRowsForCounts(chunk, rowCounts)
 
     const denominator = (rows.length - 1) - rows.reduce((sum, row) => {
       return sum + ((row.count - 1) / row.ratioSum)
@@ -187,10 +264,11 @@ export function buildPreviewRowsWithHeroPattern(
     }
 
     const widthsPart = rows.reduce((sum, row) => sum + (width / row.ratioSum), 0)
-    const gap = (targetTotalHeight - widthsPart) / denominator
-    if (!Number.isFinite(gap) || gap < minGap || gap > maxGap) {
+    const rawGap = (targetTotalHeight - widthsPart) / denominator
+    if (!Number.isFinite(rawGap)) {
       return
     }
+    const gap = Math.max(minGap, Math.min(maxGap, rawGap))
 
     const preparedRows = rows.map((row) => {
       const height = (width - gap * (row.count - 1)) / row.ratioSum
@@ -213,7 +291,8 @@ export function buildPreviewRowsWithHeroPattern(
     const mean = heights.reduce((sum, value) => sum + value, 0) / heights.length
     const variance = heights.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / heights.length
     const stdDev = Math.sqrt(variance)
-    const score = Math.abs(gap - targetGap) * 2.4 + stdDev + (chunk.length * 0.05)
+    const clampPenalty = Math.abs(rawGap - gap) * 1.8
+    const score = Math.abs(gap - targetGap) * 2.4 + stdDev + clampPenalty + (chunk.length * 0.05)
 
     if (!best || score < best.score) {
       best = { score, rows: preparedRows }
@@ -266,7 +345,10 @@ export function buildPreviewRowsWithHeroPattern(
     return { rows: [] }
   }
 
-  const fallbackRowsCount = Math.max(1, Math.ceil(fallback.length / maxPerRow))
+  const fallbackRowsCount = Math.min(
+    fallback.length,
+    Math.max(fallbackMinRows, Math.ceil(fallback.length / maxPerRow)),
+  )
   const fallbackBase = Math.floor(fallback.length / fallbackRowsCount)
   const fallbackExtra = fallback.length % fallbackRowsCount
   const rowChunks = []

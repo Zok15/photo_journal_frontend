@@ -582,6 +582,9 @@ const previewRowsBySeries = computed(() => {
     const width = previewGridWidths.value[seriesId] || 920
     const minPerRow = isMobilePreviewViewport.value ? 3 : 2
     const maxPerRow = isMobilePreviewViewport.value ? 4 : 5
+    const minGap = isMobilePreviewViewport.value ? 4 : 6
+    const maxGap = isMobilePreviewViewport.value ? 7 : 10
+    const targetGap = isMobilePreviewViewport.value ? 6 : 8
     const targetTotalHeight = isMobilePreviewViewport.value
       ? Math.max(210, Math.min(420, width * 0.7))
       : Math.max(320, Math.min(580, width * 0.58))
@@ -596,11 +599,14 @@ const previewRowsBySeries = computed(() => {
         minPerRow,
         maxPerRow,
         targetTotalHeight,
+        minGap,
+        maxGap,
         minRowHeight: 96,
         maxRowHeight: 260,
-        targetGap: 8,
+        targetGap,
+        rebalanceRows: true,
         ratioFallback: 1,
-        fallbackGap: 8,
+        fallbackGap: targetGap,
         fallbackMaxTiles: photos.length,
       },
     )
@@ -608,6 +614,10 @@ const previewRowsBySeries = computed(() => {
 
   return map
 })
+
+function previewGridGap(seriesId) {
+  return Number(previewRowsBySeries.value?.[seriesId]?.rows?.[0]?.gap ?? 8)
+}
 
 function toggleTag(tag) {
   if (selectedTags.value.includes(tag)) {
@@ -1660,6 +1670,7 @@ function toggleMobileFilters() {
                 <div
                 :ref="(element) => setPreviewGridRef(item.id, element)"
                 class="preview-grid"
+                :style="{ rowGap: `${previewGridGap(item.id)}px` }"
               >
                 <div
                   v-for="(row, rowIndex) in (previewRowsBySeries[item.id]?.rows || [])"
