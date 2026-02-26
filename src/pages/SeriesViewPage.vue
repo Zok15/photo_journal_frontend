@@ -497,6 +497,54 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+const EXIF_WHITE_BALANCE_LABELS = {
+  auto: 'Авто',
+  automatic: 'Авто',
+  manual: 'Ручной',
+  daylight: 'Дневной свет',
+  sunny: 'Солнечно',
+  cloudy: 'Облачно',
+  shade: 'Тень',
+  tungsten: 'Лампа накаливания',
+  incandescent: 'Лампа накаливания',
+  fluorescent: 'Флуоресцентный',
+  flash: 'Вспышка',
+  custom: 'Пользовательский',
+  kelvin: 'Кельвины',
+}
+
+const EXIF_COLOR_SPACE_LABELS = {
+  srgb: 'sRGB',
+  'adobe rgb': 'Adobe RGB',
+  adobe_rgb: 'Adobe RGB',
+  displayp3: 'Display P3',
+  'display p3': 'Display P3',
+  p3: 'Display P3',
+  prophotorgb: 'ProPhoto RGB',
+  'prophoto rgb': 'ProPhoto RGB',
+  uncalibrated: 'Некалиброванное',
+}
+
+function normalizeExifEnumValue(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function localizeExifEnumValue(value, dictionary) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+
+  const normalized = normalizeExifEnumValue(raw)
+  const compact = normalized.replace(/[\s_-]+/g, '')
+  const localized = dictionary[normalized] || dictionary[compact]
+  if (!localized) {
+    return raw
+  }
+
+  return t(localized)
+}
+
 function exifRowsForPhoto(photo) {
   const meta = photo?.metadata
   if (!meta || typeof meta !== 'object') {
@@ -557,12 +605,20 @@ function exifRowsForPhoto(photo) {
 
   const whiteBalance = String(meta.white_balance_mode || '').trim()
   if (whiteBalance) {
-    rows.push({ key: 'white_balance', label: t('Баланс белого'), value: whiteBalance })
+    rows.push({
+      key: 'white_balance',
+      label: t('Баланс белого'),
+      value: localizeExifEnumValue(whiteBalance, EXIF_WHITE_BALANCE_LABELS),
+    })
   }
 
   const colorSpace = String(meta.color_space || '').trim()
   if (colorSpace) {
-    rows.push({ key: 'color_space', label: t('Цветовое пространство'), value: colorSpace })
+    rows.push({
+      key: 'color_space',
+      label: t('Цветовое пространство'),
+      value: localizeExifEnumValue(colorSpace, EXIF_COLOR_SPACE_LABELS),
+    })
   }
 
   const sourceSize = Number(meta.source_file_size)
