@@ -296,8 +296,6 @@ const previewRowsBySeries = computed(() => {
         minRowHeight: 96,
         maxRowHeight: 260,
         targetGap,
-        minRatio: 1,
-        maxRatio: 2.2,
         ratioFallback: 1,
         fallbackGap: targetGap,
         fallbackMaxTiles: photos.length,
