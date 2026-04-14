@@ -1,10 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '../lib/api'
 import { formatValidationErrorMessage } from '../lib/formErrors'
-import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
-import { buildPreviewRowsWithDynamicGrid } from '../lib/previewRows'
 import LazyPhotoThumb from '../components/LazyPhotoThumb.vue'
 import PhotoPreviewModal from '../components/PhotoPreviewModal.vue'
 import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
@@ -12,14 +9,40 @@ import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { buildUploadValidationMessage, findInvalidUploadIssue } from '../lib/uploadPolicy'
 import { getUser, isAuthenticated, setCurrentUser } from '../lib/session'
 import { currentLocale, t } from '../lib/i18n'
+import { usePreviewGrid } from '../composables/usePreviewGrid'
+import { useSeriesDownload } from '../composables/useSeriesDownload'
+import { useSeriesTags } from '../composables/useSeriesTags'
+import {
+  deleteSeries as deleteSeriesRequest,
+  deleteSeriesPhoto,
+  getPublicSeries,
+  getSeries,
+  publishSeriesAsAdmin,
+  refreshSeriesAutoTags,
+  renameSeriesPhoto,
+  reorderSeriesPhotos,
+  updateSeries,
+  uploadSeriesPhotos,
+} from '../services/seriesService'
+import { getProfile } from '../services/profileService'
 
 const route = useRoute()
 const router = useRouter()
+const {
+  downloadPhotoOriginal: downloadSeriesPhoto,
+  downloadProgressText,
+  downloadSeries,
+  isPhotoDownloading,
+  isSeriesDownloading,
+} = useSeriesDownload({ t })
 
+// `item` — главный объект страницы. В нем хранится вся серия:
+// мета-данные, фото, теги, статус публикации и прочие поля из API.
 const item = ref(null)
 const loading = ref(true)
 const error = ref('')
 
+// Состояние формы загрузки фото.
 const uploadFiles = ref([])
 const uploadInput = ref(null)
 const uploading = ref(false)
@@ -27,6 +50,7 @@ const uploadError = ref('')
 const uploadWarnings = ref([])
 const showUploadForm = ref(false)
 
+// Состояние редактирования самой серии.
 const isEditingSeries = ref(false)
 const editTitle = ref('')
 const editDescription = ref('')
@@ -37,38 +61,41 @@ const savingSeries = ref(false)
 const showDeleteSeriesModal = ref(false)
 const deletingSeries = ref(false)
 const deleteSeriesError = ref('')
+
+// Состояние удаления отдельной фотографии.
 const showDeletePhotoModal = ref(false)
 const photoToDelete = ref(null)
 const deletingPhoto = ref(false)
 const deletePhotoError = ref('')
+
+// Состояние drag-and-drop сортировки фотографий.
 const draggingPhotoId = ref(null)
 const dragOverPhotoId = ref(null)
 const reorderingPhotos = ref(false)
 const photoOrderError = ref('')
+
+// После drag-and-drop браузер может сгенерировать лишний клик.
+// Этот флаг временно запрещает открытие preview после перетаскивания.
 const suppressPreviewOpen = ref(false)
+
+// Состояние ручного обновления автоматически сгенерированных тегов.
 const refreshingTags = ref(false)
 const refreshTagsError = ref('')
 const refreshTagsInfo = ref('')
+
+// Состояние админской публикации серии.
 const adminPublishError = ref('')
 const adminPublishInfo = ref('')
 const publishingByAdmin = ref(false)
-const newTagName = ref('')
-const addingTag = ref(false)
-const removingTagId = ref(null)
-const tagEditError = ref('')
-const showTagInput = ref(false)
-const tagSuggestions = ref([])
-const tagSuggestionsLoading = ref(false)
+
+// Версия URL нужна для принудительного обновления картинок через cache busting.
 const photoUrlVersion = ref(0)
-const previewGridWidth = ref(0)
-const previewAspectRatios = ref({})
-const previewGridRef = ref(null)
+
+// Для каждой фотографии отдельно храним:
+// 1) открыта ли EXIF-панель
+// 2) куда ее лучше раскрывать — вверх или вниз
 const openExifByPhotoId = ref({})
 const exifPlacementByPhotoId = ref({})
-let previewResizeObserver = null
-let tagSuggestTimerId = null
-let tagSuggestRequestId = 0
-let previewRatioRequestId = 0
 let statusPollTimerId = null
 let statusPollInFlight = false
 let tagsPollTimerId = null
@@ -85,7 +112,10 @@ const PHOTO_UPLOAD_CHUNK_SIZE = 3
 const selectedPhoto = ref(null)
 const currentUser = ref(getUser())
 
+// Безопасный доступ к массиву фото.
 const photoList = computed(() => item.value?.photos || [])
+
+// Индекс выбранного фото нужен для стрелочной навигации в preview-модалке.
 const selectedPhotoIndex = computed(() => {
   if (!selectedPhoto.value) {
     return -1
@@ -97,13 +127,21 @@ const canPreviewPrev = computed(() => selectedPhotoIndex.value > 0)
 const canPreviewNext = computed(() => {
   return selectedPhotoIndex.value >= 0 && selectedPhotoIndex.value < photoList.value.length - 1
 })
+
+// Редактировать серию может только ее владелец.
+// Это клиентская проверка для UI, а не замена серверной авторизации.
 const canEditSeries = computed(() => {
   const ownerId = Number(item.value?.user_id || 0)
   const currentUserId = Number(currentUser.value?.id || 0)
 
   return ownerId > 0 && currentUserId > 0 && ownerId === currentUserId
 })
+
+// Модератору показываем дополнительные moderation-данные.
 const canViewModerationTags = computed(() => Boolean(currentUser.value?.can_moderate))
+
+// Нормализуем теги и сортируем их по имени,
+// чтобы отображение было стабильным и предсказуемым.
 const seriesTags = computed(() => {
   const tags = (item.value?.tags || [])
     .map((tag) => ({
@@ -117,6 +155,8 @@ const seriesTags = computed(() => {
 const showPendingTagsHint = computed(() => {
   return Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
 })
+
+// Админ может опубликовать только те серии, которые ждут модерации или были отклонены.
 const canAdminPublishSeries = computed(() => {
   if (!canViewModerationTags.value) {
     return false
@@ -132,10 +172,8 @@ const moderationTags = computed(() => {
     .filter(Boolean)
 })
 
-const attachedTagLookup = computed(() => {
-  return new Set(seriesTags.value.map((tag) => tag.name.toLowerCase()))
-})
-
+// Некоторые API-методы возвращают только часть данных серии.
+// Эта функция аккуратно объединяет новый кусок данных с уже загруженным объектом.
 function mergeSeriesPayload(next) {
   if (!next) {
     return item.value
@@ -160,6 +198,7 @@ function stopStatusPolling() {
   statusPollInFlight = false
 }
 
+// Перезаписываем таймер, чтобы в любой момент был только один активный polling.
 function scheduleStatusPoll(delayMs) {
   if (statusPollTimerId !== null) {
     clearTimeout(statusPollTimerId)
@@ -167,6 +206,7 @@ function scheduleStatusPoll(delayMs) {
   statusPollTimerId = window.setTimeout(pollSeriesStatusTick, delayMs)
 }
 
+// Один "тик" проверки статуса публикации на сервере.
 async function pollSeriesStatusTick() {
   statusPollTimerId = null
   if (statusPollInFlight) {
@@ -192,6 +232,7 @@ async function pollSeriesStatusTick() {
   }
 }
 
+// Polling статуса нужен только пока серия находится на модерации.
 function ensureStatusPolling() {
   if (publicationStatus(item.value) !== 'pending_moderation') {
     stopStatusPolling()
@@ -209,6 +250,7 @@ function hasPendingAutoTags() {
   return Number(item.value?.photos_count || 0) > 0 && seriesTags.value.length === 0
 }
 
+// Полностью останавливаем polling тегов и сбрасываем счетчик попыток.
 function stopTagsPolling() {
   if (tagsPollTimerId !== null) {
     clearTimeout(tagsPollTimerId)
@@ -218,6 +260,7 @@ function stopTagsPolling() {
   tagsPollAttempts = 0
 }
 
+// Планируем следующую фоновую проверку тегов.
 function scheduleTagsPoll(delayMs) {
   if (tagsPollTimerId !== null) {
     clearTimeout(tagsPollTimerId)
@@ -225,6 +268,7 @@ function scheduleTagsPoll(delayMs) {
   tagsPollTimerId = window.setTimeout(pollSeriesTagsTick, delayMs)
 }
 
+// Один "тик" polling-а автотегов.
 async function pollSeriesTagsTick() {
   tagsPollTimerId = null
   if (tagsPollInFlight) {
@@ -252,6 +296,8 @@ async function pollSeriesTagsTick() {
   }
 }
 
+// Polling автотегов нужен только в промежуточном состоянии:
+// фотографии уже есть, а теги еще не успели появиться.
 function ensureTagsPolling() {
   if (!hasPendingAutoTags()) {
     stopTagsPolling()
@@ -269,6 +315,8 @@ function ensureTagsPolling() {
   scheduleTagsPoll(TAGS_POLL_INTERVAL_MS)
 }
 
+// Упрощенная загрузка серии: обновляем только теги и несколько связанных полей,
+// не загружая заново весь список фотографий.
 async function loadSeriesTagsOnly() {
   const seriesKey = currentSeriesKey()
   if (!seriesKey || !item.value) {
@@ -280,10 +328,8 @@ async function loadSeriesTagsOnly() {
 
     if (isAuthenticated.value) {
       try {
-        const response = await api.get(`/series/${seriesKey}`, {
-          params: {
-            include_blocking_tags: canViewModerationTags.value ? 1 : 0,
-          },
+        const response = await getSeries(seriesKey, {
+          include_blocking_tags: canViewModerationTags.value ? 1 : 0,
         })
         data = response.data
       } catch (e) {
@@ -294,10 +340,8 @@ async function loadSeriesTagsOnly() {
     }
 
     if (!data) {
-      const response = await api.get(`/public/series/${seriesKey}`, {
-        params: {
-          include_blocking_tags: canViewModerationTags.value ? 1 : 0,
-        },
+      const response = await getPublicSeries(seriesKey, {
+        include_blocking_tags: canViewModerationTags.value ? 1 : 0,
       })
       data = response.data
     }
@@ -326,6 +370,8 @@ async function loadSeriesTagsOnly() {
   }
 }
 
+// Серия может идентифицироваться и slug, и id.
+// Если после загрузки у нас уже есть нормализованный ключ — берем его.
 function currentSeriesKey() {
   const keyFromItem = seriesSlugOrId(item.value)
   if (keyFromItem) {
@@ -335,6 +381,27 @@ function currentSeriesKey() {
   return String(route.params.slug || '').trim()
 }
 
+async function downloadWholeSeries() {
+  const seriesKey = currentSeriesKey()
+  if (!seriesKey) {
+    return
+  }
+
+  error.value = ''
+
+  try {
+    await downloadSeries({
+      seriesKey,
+      photos: photoList.value.length === Number(item.value?.photos_count || 0) ? photoList.value : null,
+      fallbackMessage: t('Не удалось скачать серию целиком.'),
+    })
+  } catch (e) {
+    error.value = e?.message || t('Не удалось скачать серию целиком.')
+  }
+}
+
+// Возвращаем пользователя назад, если переход был внутри приложения.
+// Если истории нет, ведем на главную.
 function goBack() {
   const back = window.history.state?.back
   if (typeof back === 'string' && back.startsWith('/')) {
@@ -349,6 +416,7 @@ function photoUrl(path) {
   return buildStorageUrl(path)
 }
 
+// Для публичного изображения сначала используем URL, который уже прислал сервер.
 function publicPhotoUrl(photo) {
   const direct = String(photo?.public_url || '').trim()
   if (direct) {
@@ -358,6 +426,8 @@ function publicPhotoUrl(photo) {
   return photoUrl(photo?.path)
 }
 
+// Для превью предпочитаем специальный `preview_url`,
+// а если его нет — строим обычный URL и добавляем cache-bust параметр.
 function resolvedPhotoUrl(photo) {
   const signed = String(photo?.preview_url || '').trim()
   if (signed) {
@@ -367,6 +437,7 @@ function resolvedPhotoUrl(photo) {
   return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
 }
 
+// В полноэкранной модалке стараемся показать оригинал.
 function resolvedPhotoOriginalUrl(photo) {
   const original = withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
   if (original) {
@@ -376,6 +447,7 @@ function resolvedPhotoOriginalUrl(photo) {
   return resolvedPhotoUrl(photo)
 }
 
+// Fallback на обычный URL, если preview URL недоступен.
 function resolvedPhotoFallbackUrl(photo) {
   if (!photo?.preview_url) {
     return ''
@@ -384,50 +456,7 @@ function resolvedPhotoFallbackUrl(photo) {
   return withCacheBust(publicPhotoUrl(photo), photoUrlVersion.value)
 }
 
-const previewRows = computed(() => {
-  const photos = photoList.value
-  if (!photos.length) {
-    return []
-  }
-
-  const width = previewGridWidth.value || 1120
-  return buildPreviewRowsWithDynamicGrid(
-    photos,
-    width,
-    previewAspectRatios.value,
-    {
-      gap: 10,
-      minPerRow: 3,
-      maxPerRow: 6,
-      preferredPerRow: 4,
-      mobileMinPerRow: 1,
-      mobileMaxPerRow: 2,
-      minTileWidthMobile: 200,
-      minTileWidthDesktop: 260,
-      maxTileWidthMobile: 340,
-      maxTileWidthDesktop: 420,
-      mobileBreakPoint: 760,
-      stretchLastRow: true,
-      clampRowHeights: false,
-    },
-  ).rows
-})
-
-function syncPreviewGridObserver() {
-  if (!previewResizeObserver) {
-    return
-  }
-
-  previewResizeObserver.disconnect()
-
-  if (!previewGridRef.value) {
-    return
-  }
-
-  previewResizeObserver.observe(previewGridRef.value)
-  previewGridWidth.value = previewGridRef.value.clientWidth || 0
-}
-
+// Форматируем дату с учетом текущей локали интерфейса.
 function formatDate(value) {
   if (!value) {
     return t('Без даты')
@@ -446,6 +475,7 @@ function formatDate(value) {
   }).format(date)
 }
 
+// То же самое, но вместе со временем.
 function formatDateTime(value) {
   if (!value) {
     return t('Без даты')
@@ -466,6 +496,7 @@ function formatDateTime(value) {
   }).format(date)
 }
 
+// Безопасное форматирование дробных чисел.
 function formatDecimal(value, maxFractionDigits = 2) {
   const num = Number(value)
   if (!Number.isFinite(num) || num <= 0) {
@@ -478,6 +509,7 @@ function formatDecimal(value, maxFractionDigits = 2) {
   })
 }
 
+// Перевод размера файла в удобочитаемый формат.
 function formatSize(bytes) {
   if (!Number.isFinite(bytes)) {
     return 'n/a'
@@ -526,6 +558,9 @@ function normalizeExifEnumValue(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+// Сервер может прислать строковое enum-значение в разных форматах:
+// с разным регистром, пробелами, `_` или `-`.
+// Нормализуем его и пытаемся найти локализованный вариант в словаре.
 function localizeExifEnumValue(value, dictionary) {
   const raw = String(value || '').trim()
   if (!raw) {
@@ -542,6 +577,8 @@ function localizeExifEnumValue(value, dictionary) {
   return t(localized)
 }
 
+// Преобразуем "сырые" EXIF-метаданные фотографии в список строк для отображения.
+// Так шаблон становится проще: ему не нужно знать детали форматов и полей EXIF.
 function exifRowsForPhoto(photo) {
   const meta = photo?.metadata
   if (!meta || typeof meta !== 'object') {
@@ -626,6 +663,7 @@ function exifRowsForPhoto(photo) {
   return rows
 }
 
+// Проверяем, открыта ли EXIF-панель у конкретного фото.
 function isExifOpen(photo) {
   const photoId = Number(photo?.id || 0)
   if (!photoId) {
@@ -635,6 +673,7 @@ function isExifOpen(photo) {
   return Boolean(openExifByPhotoId.value[photoId])
 }
 
+// Узнаем, куда нужно раскрывать EXIF у конкретной фотографии.
 function exifPlacement(photo) {
   const photoId = Number(photo?.id || 0)
   if (!photoId) {
@@ -644,6 +683,8 @@ function exifPlacement(photo) {
   return exifPlacementByPhotoId.value[photoId] === 'up' ? 'up' : 'down'
 }
 
+// Перед открытием EXIF оцениваем свободное место вокруг кнопки.
+// Если снизу мало пространства, раскрываем панель вверх.
 function updateExifPlacement(photo, event) {
   const photoId = Number(photo?.id || 0)
   if (!photoId) {
@@ -673,6 +714,7 @@ function updateExifPlacement(photo, event) {
   }
 }
 
+// Открываем или закрываем EXIF по клику.
 function toggleExif(photo, event) {
   const photoId = Number(photo?.id || 0)
   if (!photoId) {
@@ -689,6 +731,7 @@ function toggleExif(photo, event) {
   }
 }
 
+// Закрываем все EXIF-панели разом.
 function closeAllExifPanels() {
   if (!Object.keys(openExifByPhotoId.value || {}).length) {
     return
@@ -710,6 +753,8 @@ function onDocumentPointerDown(event) {
   closeAllExifPanels()
 }
 
+// После выбора файлов сразу валидируем список на клиенте,
+// чтобы не отправлять заведомо неподходящие файлы на сервер.
 function onUploadFilesChanged(event) {
   const files = Array.from(event.target.files || [])
   const invalid = findInvalidUploadIssue(files)
@@ -729,10 +774,44 @@ function formatValidationError(err) {
   return formatValidationErrorMessage(err, 'Request failed.')
 }
 
+const {
+  newTagName,
+  addingTag,
+  removingTagId,
+  tagEditError,
+  showTagInput,
+  tagSuggestions,
+  tagSuggestionsLoading,
+  addSeriesTag,
+  openTagInput,
+  closeTagInput,
+  removeSeriesTag,
+  pickSuggestedTag,
+  scheduleTagSuggestions,
+  cleanupSeriesTags,
+} = useSeriesTags({
+  canEditSeries,
+  item,
+  mergeSeriesPayload,
+  currentSeriesKey,
+  formatValidationError,
+  t,
+})
+
+const {
+  previewGridRef,
+  previewRows,
+} = usePreviewGrid({
+  photoList,
+  resolvePhotoUrl: resolvedPhotoUrl,
+})
+
+// Приводим статус публикации к строке для безопасных сравнений.
 function publicationStatus(series) {
   return String(series?.publication_status || '').trim()
 }
 
+// Текстовый человекочитаемый статус серии.
 function visibilityLabel(series) {
   const status = publicationStatus(series)
   if (status === 'pending_moderation') {
@@ -748,6 +827,7 @@ function visibilityLabel(series) {
   return t('Приватная')
 }
 
+// CSS-класс для цветовой подсветки статуса.
 function visibilityClass(series) {
   const status = publicationStatus(series)
   if (status === 'pending_moderation') {
@@ -763,6 +843,7 @@ function visibilityClass(series) {
   return 'series-visibility--private'
 }
 
+// Открываем форму редактирования и заполняем ее текущими значениями серии.
 function openEditSeries() {
   if (!item.value || !canEditSeries.value) return
 
@@ -774,12 +855,14 @@ function openEditSeries() {
   editIsPublic.value = Boolean(item.value.is_public) || publicationStatus(item.value) === 'pending_moderation'
 }
 
+// Закрываем форму редактирования и очищаем сообщения.
 function cancelEditSeries() {
   isEditingSeries.value = false
   editError.value = ''
   editInfo.value = ''
 }
 
+// Сохраняем изменения серии на сервере.
 async function saveSeries() {
   if (!item.value || !canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -794,12 +877,14 @@ async function saveSeries() {
   editInfo.value = ''
 
   try {
-    const { data } = await api.patch(`/series/${seriesKey}`, {
+    const { data } = await updateSeries(seriesKey, {
       title: editTitle.value,
       description: editDescription.value || null,
       is_public: editIsPublic.value,
     })
 
+    // Обновляем локальный объект ответом сервера,
+    // но не теряем уже загруженные фотографии.
     const updated = data?.data || {}
     item.value = {
       ...item.value,
@@ -827,10 +912,12 @@ function openPreview(photo) {
   selectedPhoto.value = photo
 }
 
+// Закрываем preview-модалку.
 function closePreview() {
   selectedPhoto.value = null
 }
 
+// Переход к предыдущему фото внутри preview.
 function openPrevPhoto() {
   if (!canPreviewPrev.value) {
     return
@@ -839,6 +926,7 @@ function openPrevPhoto() {
   selectedPhoto.value = photoList.value[selectedPhotoIndex.value - 1] || null
 }
 
+// Переход к следующему фото внутри preview.
 function openNextPhoto() {
   if (!canPreviewNext.value) {
     return
@@ -847,6 +935,8 @@ function openNextPhoto() {
   selectedPhoto.value = photoList.value[selectedPhotoIndex.value + 1] || null
 }
 
+// Глобальные клавиши страницы: Escape закрывает открытые окна,
+// стрелки листают фотографии в preview.
 function onKeydown(event) {
   if (event.key === 'Escape' && showDeletePhotoModal.value) {
     closeDeletePhotoModal()
@@ -875,6 +965,7 @@ function onKeydown(event) {
   }
 }
 
+// Начало drag-and-drop. Запоминаем id переносимой фотографии.
 function onPhotoDragStart(photo, event) {
   if (!canEditSeries.value) {
     return
@@ -902,6 +993,7 @@ function onPhotoDragStart(photo, event) {
   }
 }
 
+// Подсветка карточки, над которой сейчас проходит перенос.
 function onPhotoDragEnter(photo) {
   if (draggingPhotoId.value === null || draggingPhotoId.value === photo.id) {
     return
@@ -910,11 +1002,14 @@ function onPhotoDragEnter(photo) {
   dragOverPhotoId.value = photo.id
 }
 
+// Очищаем все временные drag-флаги.
 function onPhotoDragEnd() {
   draggingPhotoId.value = null
   dragOverPhotoId.value = null
 }
 
+// Главная логика изменения порядка фото.
+// Сначала меняем UI локально, затем подтверждаем порядок на сервере.
 async function onPhotoDrop(targetPhoto) {
   if (!canEditSeries.value) {
     onPhotoDragEnd()
@@ -953,6 +1048,7 @@ async function onPhotoDrop(targetPhoto) {
     return ids
   }
 
+  // Вспомогательная функция: переставить один элемент на позицию другого.
   const moveByIds = (photos, fromPhotoId, toPhotoId) => {
     const next = [...photos]
     const fromIndex = next.findIndex((photo) => Number(photo?.id || 0) === fromPhotoId)
@@ -986,6 +1082,8 @@ async function onPhotoDrop(targetPhoto) {
     photos: nextOrder,
   }
 
+  // После drop браузер может сгенерировать click по карточке.
+  // На один тик запрещаем открывать preview, чтобы не было ложного открытия.
   suppressPreviewOpen.value = true
   setTimeout(() => {
     suppressPreviewOpen.value = false
@@ -1001,14 +1099,12 @@ async function onPhotoDrop(targetPhoto) {
   }
 
   try {
-    const patchOrder = async (photoIds) => {
-      await api.patch(`/series/${seriesKey}/photos/reorder`, {
-        photo_ids: photoIds,
-      })
-    }
+    const patchOrder = async (photoIds) => reorderSeriesPhotos(seriesKey, photoIds)
 
     await patchOrder(nextIds)
   } catch (e) {
+    // Специальный случай: сервер говорит, что клиент отправил устаревший порядок.
+    // Тогда перечитываем свежий список фото и пробуем переставить заново.
     const exactOrderError = String(e?.response?.data?.message || '')
       .toLowerCase()
       .includes('photo_ids must contain all photos of the series exactly once')
@@ -1024,9 +1120,7 @@ async function onPhotoDrop(targetPhoto) {
             photos: retryOrder,
           }
           try {
-            await api.patch(`/series/${seriesKey}/photos/reorder`, {
-              photo_ids: retryIds,
-            })
+            await reorderSeriesPhotos(seriesKey, retryIds)
             reorderingPhotos.value = false
             onPhotoDragEnd()
             return
@@ -1048,6 +1142,7 @@ async function onPhotoDrop(targetPhoto) {
   }
 }
 
+// Открываем модалку удаления серии.
 function openDeleteSeriesModal() {
   if (!canEditSeries.value) {
     return
@@ -1057,6 +1152,8 @@ function openDeleteSeriesModal() {
   deleteSeriesError.value = ''
 }
 
+// Во время активного удаления запрещаем закрытие, чтобы пользователь
+// не потерял контекст посреди выполнения запроса.
 function closeDeleteSeriesModal() {
   if (deletingSeries.value) {
     return
@@ -1066,6 +1163,7 @@ function closeDeleteSeriesModal() {
   deleteSeriesError.value = ''
 }
 
+// Готовим модалку удаления фото.
 function openDeletePhotoModal(photo) {
   if (!photo) return
   photoToDelete.value = photo
@@ -1073,6 +1171,7 @@ function openDeletePhotoModal(photo) {
   deletePhotoError.value = ''
 }
 
+// `force` нужен для сценария успешного удаления, когда модалку надо закрыть гарантированно.
 function closeDeletePhotoModal(force = false) {
   if (deletingPhoto.value && !force) {
     return
@@ -1083,6 +1182,7 @@ function closeDeletePhotoModal(force = false) {
   deletePhotoError.value = ''
 }
 
+// Удаление серии целиком.
 async function deleteSeries() {
   if (!item.value || !canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -1092,7 +1192,7 @@ async function deleteSeries() {
   deleteSeriesError.value = ''
 
   try {
-    await api.delete(`/series/${seriesKey}`)
+    await deleteSeriesRequest(seriesKey)
     showDeleteSeriesModal.value = false
     await router.push('/series')
   } catch (e) {
@@ -1102,6 +1202,8 @@ async function deleteSeries() {
   }
 }
 
+// Загружаем фотографии на сервер небольшими пачками.
+// Это уменьшает размер одного запроса и упрощает обработку частичных ошибок.
 async function uploadPhotos() {
   if (!canEditSeries.value) {
     return
@@ -1138,10 +1240,11 @@ async function uploadPhotos() {
         formData.append('photos[]', file)
       }
 
-      const { data } = await api.post(`/series/${seriesKey}/photos`, formData)
+      const { data } = await uploadSeriesPhotos(seriesKey, formData)
       failedUploads.push(...(data?.photos_failed || []))
     }
 
+    // Если часть файлов не загрузилась, покажем предупреждения по каждому файлу.
     uploadWarnings.value = failedUploads
     uploadFiles.value = []
     showUploadForm.value = false
@@ -1158,11 +1261,13 @@ async function uploadPhotos() {
   }
 }
 
+// Здесь удаление еще не происходит — только открываем подтверждение.
 async function deletePhoto(photo) {
   if (!item.value || !photo || !canEditSeries.value) return
   openDeletePhotoModal(photo)
 }
 
+// Реальное удаление фото после подтверждения в модалке.
 async function confirmDeletePhoto() {
   if (!item.value || !photoToDelete.value || !canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -1174,7 +1279,7 @@ async function confirmDeletePhoto() {
   deletePhotoError.value = ''
 
   try {
-    await api.delete(`/series/${seriesKey}/photos/${deletedPhotoId}`)
+    await deleteSeriesPhoto(seriesKey, deletedPhotoId)
     deleted = true
   } catch (e) {
     deletePhotoError.value = e?.response?.data?.message || t('Не удалось удалить фото.')
@@ -1188,6 +1293,7 @@ async function confirmDeletePhoto() {
 
   closeDeletePhotoModal(true)
 
+  // Если удалили фото, которое было открыто в preview, закрываем модалку.
   if (selectedPhoto.value?.id === deletedPhotoId) {
     closePreview()
   }
@@ -1211,6 +1317,8 @@ async function confirmDeletePhoto() {
   loadSeries({ silent: true }).catch(() => {})
 }
 
+// Переименование пока реализовано через системный `prompt`.
+// Это простой способ, но UX здесь менее удобный, чем у обычной формы.
 async function renamePhoto(photo) {
   if (!item.value || !photo || !canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -1231,9 +1339,7 @@ async function renamePhoto(photo) {
   if (!normalized) return
 
   try {
-    await api.patch(`/series/${seriesKey}/photos/${photo.id}`, {
-      original_name: normalized,
-    })
+    await renameSeriesPhoto(seriesKey, photo.id, normalized)
 
     await loadSeries()
   } catch (e) {
@@ -1241,45 +1347,20 @@ async function renamePhoto(photo) {
   }
 }
 
-function downloadPhotoOriginal(photo) {
+// На странице серии уже есть массив фотографий, поэтому
+// скачивание одной фотографии сводится к вызову общего composable.
+async function downloadPhotoOriginal(photo) {
   const seriesKey = currentSeriesKey()
   if (!seriesKey || !photo?.id) return
 
-  const fallbackName = photo?.original_name || `photo-${photo?.id || 'original'}.jpg`
-  const parseFileName = (contentDisposition) => {
-    if (!contentDisposition) return fallbackName
+  error.value = ''
 
-    const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-    if (utfMatch?.[1]) {
-      try {
-        return decodeURIComponent(utfMatch[1].replace(/["']/g, ''))
-      } catch (_) {
-        return utfMatch[1].replace(/["']/g, '')
-      }
-    }
-
-    const asciiMatch = contentDisposition.match(/filename="?([^\";]+)"?/i)
-    return asciiMatch?.[1] || fallbackName
-  }
-
-  api.get(`/series/${seriesKey}/photos/${photo.id}/download`, {
-    responseType: 'blob',
-  }).then((response) => {
-    const fileName = parseFileName(response.headers?.['content-disposition'])
-    const blobUrl = URL.createObjectURL(response.data)
-    const link = document.createElement('a')
-    link.href = blobUrl
-    link.download = fileName
-    link.rel = 'noopener'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(blobUrl)
-  }).catch((e) => {
-    error.value = e?.response?.data?.message || t('Не удалось скачать оригинал фото.')
+  downloadSeriesPhoto(seriesKey, photo, t('Не удалось скачать оригинал фото.')).catch((e) => {
+    error.value = e?.message || t('Не удалось скачать оригинал фото.')
   })
 }
 
+// Ручной запуск обновления автоматически сгенерированных тегов.
 async function refreshAutoTags() {
   if (!canEditSeries.value) return
   const seriesKey = currentSeriesKey()
@@ -1290,7 +1371,7 @@ async function refreshAutoTags() {
   refreshTagsInfo.value = ''
 
   try {
-    const { data } = await api.post(`/series/${seriesKey}/photos/retag`)
+    const { data } = await refreshSeriesAutoTags(seriesKey)
     const processed = Number(data?.data?.processed || 0)
     const failed = Number(data?.data?.failed || 0)
     const tagsCount = Number(data?.data?.tags_count || 0)
@@ -1309,6 +1390,7 @@ async function refreshAutoTags() {
       }
     }
 
+    // После пересчета перечитываем серию, чтобы UI отобразил новые теги и статусы.
     await loadSeries()
   } catch (e) {
     refreshTagsError.value = e?.response?.data?.message || t('Не удалось обновить теги.')
@@ -1317,6 +1399,7 @@ async function refreshAutoTags() {
   }
 }
 
+// Админская публикация серии в обход обычного пользовательского сценария.
 async function adminPublishSeries() {
   if (!canAdminPublishSeries.value) {
     return
@@ -1332,7 +1415,7 @@ async function adminPublishSeries() {
   adminPublishInfo.value = ''
 
   try {
-    const { data } = await api.post(`/admin/series/${seriesKey}/publish`)
+    const { data } = await publishSeriesAsAdmin(seriesKey)
     item.value = mergeSeriesPayload(data?.data || null)
     adminPublishInfo.value = t('Серия опубликована админом.')
   } catch (e) {
@@ -1342,127 +1425,11 @@ async function adminPublishSeries() {
   }
 }
 
-async function addSeriesTag() {
-  if (!canEditSeries.value) return
-  const seriesKey = currentSeriesKey()
-  if (!seriesKey) return
-
-  const prepared = String(newTagName.value || '').trim()
-  if (!prepared) {
-    tagEditError.value = t('Введите тег.')
-    return
-  }
-
-  addingTag.value = true
-  tagEditError.value = ''
-
-  try {
-    const { data } = await api.post(`/series/${seriesKey}/tags`, {
-      tags: [prepared],
-    })
-
-    item.value = mergeSeriesPayload(data?.data)
-    newTagName.value = ''
-    tagSuggestions.value = []
-    closeTagInput()
-  } catch (e) {
-    tagEditError.value = formatValidationError(e)
-  } finally {
-    addingTag.value = false
-  }
-}
-
-function openTagInput() {
-  if (!canEditSeries.value) return
-  showTagInput.value = true
-  tagEditError.value = ''
-  scheduleTagSuggestions()
-}
-
-function closeTagInput() {
-  if (addingTag.value) return
-  showTagInput.value = false
-  newTagName.value = ''
-  tagSuggestions.value = []
-  tagSuggestionsLoading.value = false
-  if (tagSuggestTimerId !== null) {
-    clearTimeout(tagSuggestTimerId)
-    tagSuggestTimerId = null
-  }
-}
-
-async function removeSeriesTag(tag) {
-  if (!tag?.id || !canEditSeries.value) return
-  const seriesKey = currentSeriesKey()
-  if (!seriesKey) return
-
-  removingTagId.value = tag.id
-  tagEditError.value = ''
-
-  try {
-    const { data } = await api.delete(`/series/${seriesKey}/tags/${tag.id}`)
-    item.value = mergeSeriesPayload(data?.data)
-  } catch (e) {
-    tagEditError.value = e?.response?.data?.message || t('Не удалось удалить тег.')
-  } finally {
-    removingTagId.value = null
-  }
-}
-
-function pickSuggestedTag(name) {
-  newTagName.value = name
-  tagSuggestions.value = []
-}
-
-function scheduleTagSuggestions() {
-  if (!showTagInput.value) return
-
-  if (tagSuggestTimerId !== null) {
-    clearTimeout(tagSuggestTimerId)
-  }
-
-  tagSuggestTimerId = window.setTimeout(() => {
-    fetchTagSuggestions()
-  }, 180)
-}
-
-async function fetchTagSuggestions() {
-  const query = String(newTagName.value || '').trim()
-
-  const requestId = ++tagSuggestRequestId
-  tagSuggestionsLoading.value = true
-
-  try {
-    const { data } = await api.get('/tags/suggest', {
-      params: {
-        q: query || undefined,
-        limit: 8,
-      },
-    })
-
-    if (requestId !== tagSuggestRequestId) {
-      return
-    }
-
-    const current = query.toLowerCase()
-    const existing = attachedTagLookup.value
-    tagSuggestions.value = (Array.isArray(data?.data) ? data.data : [])
-      .map((tag) => String(tag?.name || '').trim())
-      .filter(Boolean)
-      .filter((name) => name.toLowerCase() !== current)
-      .filter((name) => !existing.has(name.toLowerCase()))
-      .slice(0, 8)
-  } catch (_) {
-    if (requestId === tagSuggestRequestId) {
-      tagSuggestions.value = []
-    }
-  } finally {
-    if (requestId === tagSuggestRequestId) {
-      tagSuggestionsLoading.value = false
-    }
-  }
-}
-
+// Главная загрузка серии.
+// Умеет работать в нескольких режимах:
+// - обычная загрузка со спиннером
+// - тихое обновление без смены общего loading
+// - загрузка только статуса без фотографий
 async function loadSeries(options = {}) {
   const silent = Boolean(options?.silent)
   const statusOnly = Boolean(options?.statusOnly)
@@ -1479,16 +1446,19 @@ async function loadSeries(options = {}) {
   try {
     let data = null
 
+    // Если пользователь авторизован, сначала пробуем приватный endpoint:
+    // он может вернуть больше данных, чем публичный.
     if (isAuthenticated.value) {
       try {
-        const response = await api.get(`/series/${route.params.slug}`, {
-          params: includePhotos
+        const response = await getSeries(
+          route.params.slug,
+          includePhotos
             ? { include_photos: 1, photos_limit: 100 }
             : {
               status_only: 1,
               include_blocking_tags: canViewModerationTags.value ? 1 : 0,
             },
-        })
+        )
         data = response.data
       } catch (e) {
         if (e?.response?.status !== 401) {
@@ -1498,17 +1468,20 @@ async function loadSeries(options = {}) {
     }
 
     if (!data) {
-      const response = await api.get(`/public/series/${route.params.slug}`, {
-        params: includePhotos
+      const response = await getPublicSeries(
+        route.params.slug,
+        includePhotos
           ? { include_photos: 1, photos_limit: 100 }
           : {
             status_only: 1,
             include_blocking_tags: canViewModerationTags.value ? 1 : 0,
           },
-      })
+      )
       data = response.data
     }
 
+    // Если фотографии реально перечитались, меняем версию URL,
+    // чтобы браузер не показывал устаревший кеш картинок.
     if (!silent && includePhotos && Array.isArray(data?.data?.photos)) {
       photoUrlVersion.value = Date.now()
     }
@@ -1518,6 +1491,8 @@ async function loadSeries(options = {}) {
     ensureTagsPolling()
     const canonical = seriesPath(item.value)
     if (canonical !== route.path) {
+      // Если сервер сообщил более правильный canonical path,
+      // тихо выравниваем URL в адресной строке.
       router.replace(canonical).catch(() => {})
     }
   } catch (e) {
@@ -1537,6 +1512,8 @@ async function loadSeries(options = {}) {
   return loaded
 }
 
+// Метаданные профиля нужны здесь в основном для вычисления прав:
+// владелец ли это, может ли пользователь модерировать и т.д.
 async function loadProfileMeta() {
   if (!isAuthenticated.value) {
     return
@@ -1547,7 +1524,7 @@ async function loadProfileMeta() {
   }
 
   try {
-    const { data } = await api.get('/profile')
+    const { data } = await getProfile()
     const user = data?.data || null
     if (!user) {
       return
@@ -1561,36 +1538,28 @@ async function loadProfileMeta() {
 }
 
 onMounted(() => {
-  previewResizeObserver = new ResizeObserver((entries) => {
-    const [entry] = entries
-    const width = Number(entry?.contentRect?.width || 0)
-    if (width > 0) {
-      previewGridWidth.value = width
-    }
-  })
-
-  syncPreviewGridObserver()
-
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointerdown', onDocumentPointerDown)
+
+  // Сначала узнаем пользователя, затем грузим серию.
+  // Так права и кнопки действий будут корректны уже при первом рендере.
   loadProfileMeta().finally(() => {
     loadSeries()
   })
 })
 
 onBeforeUnmount(() => {
+  // Чистим глобальные слушатели и таймеры, чтобы не оставлять "висящие" эффекты
+  // после ухода со страницы.
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pointerdown', onDocumentPointerDown)
-  previewResizeObserver?.disconnect()
-  previewResizeObserver = null
   stopStatusPolling()
   stopTagsPolling()
-  if (tagSuggestTimerId !== null) {
-    clearTimeout(tagSuggestTimerId)
-    tagSuggestTimerId = null
-  }
+  cleanupSeriesTags()
 })
 
+// Если пользователь перешел на другую серию, не размонтируя компонент,
+// сбрасываем состояние, привязанное к предыдущей серии, и загружаем новую.
 watch(() => route.params.slug, () => {
   stopStatusPolling()
   stopTagsPolling()
@@ -1602,25 +1571,6 @@ watch(() => route.params.slug, () => {
   })
 })
 
-watch(photoList, async (photos) => {
-  const requestId = ++previewRatioRequestId
-  previewAspectRatios.value = {}
-  const ratioPatch = await resolveMissingAspectRatios(
-    photos,
-    {},
-    (photo) => resolvedPhotoUrl(photo),
-  )
-  if (requestId !== previewRatioRequestId) {
-    return
-  }
-
-  previewAspectRatios.value = ratioPatch
-  syncPreviewGridObserver()
-}, { immediate: true })
-
-watch(previewGridRef, () => {
-  syncPreviewGridObserver()
-}, { immediate: true })
 </script>
 
 <template>
@@ -1654,6 +1604,19 @@ watch(previewGridRef, () => {
               @click="showUploadForm = !showUploadForm"
             >
               {{ showUploadForm ? t('Скрыть форму') : t('Добавить фото') }}
+            </button>
+            <button
+              v-if="canEditSeries"
+              type="button"
+              class="ghost-btn"
+              :disabled="isSeriesDownloading(currentSeriesKey())"
+              @click="downloadWholeSeries"
+            >
+              {{
+                isSeriesDownloading(currentSeriesKey())
+                  ? (downloadProgressText(currentSeriesKey()) || t('Скачиваем серию...'))
+                  : t('Скачать серию')
+              }}
             </button>
             <button
               v-if="canEditSeries"
@@ -1874,7 +1837,16 @@ watch(previewGridRef, () => {
                     >
                       {{ isExifOpen(tile.photo) ? t('EXIF −') : t('EXIF') }}
                     </button>
-                    <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Скачать оригинал')" @click.stop="downloadPhotoOriginal(tile.photo)">⤓</button>
+                    <button
+                      v-if="canEditSeries"
+                      type="button"
+                      class="icon-ghost-btn"
+                      :disabled="isPhotoDownloading(currentSeriesKey(), tile.photo.id) || isSeriesDownloading(currentSeriesKey())"
+                      :title="t('Скачать оригинал')"
+                      @click.stop="downloadPhotoOriginal(tile.photo)"
+                    >
+                      {{ isPhotoDownloading(currentSeriesKey(), tile.photo.id) ? '…' : '⤓' }}
+                    </button>
                     <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Переименовать')" @click.stop="renamePhoto(tile.photo)">✎</button>
                     <button v-if="canEditSeries" type="button" class="icon-ghost-btn" :title="t('Удалить')" @click.stop="deletePhoto(tile.photo)">🗑</button>
                   </div>
@@ -2237,40 +2209,6 @@ watch(previewGridRef, () => {
   margin: 0 0 10px;
 }
 
-.upload-form {
-  display: grid;
-  gap: 8px;
-}
-
-.upload-form input,
-.upload-form textarea {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 4px;
-  padding: 10px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-}
-
-.checkbox-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #4b574f;
-}
-
-.checkbox-field input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-
-.inline-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .preview-grid {
   width: 100%;
   max-width: 100%;
@@ -2456,74 +2394,6 @@ watch(previewGridRef, () => {
   font-size: 12px;
   line-height: 1.25;
   overflow-wrap: anywhere;
-}
-
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(26, 31, 28, 0.65);
-  display: grid;
-  place-items: center;
-  z-index: 70;
-  padding: 16px;
-}
-
-.confirm-modal {
-  width: min(520px, 100%);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #f9faf7;
-  padding: 16px;
-  box-shadow: 0 22px 46px rgba(44, 54, 47, 0.25);
-}
-
-.confirm-modal h2 {
-  margin: 0 0 8px;
-}
-
-.confirm-modal p {
-  margin: 0 0 8px;
-}
-
-.confirm-modal input {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 6px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  padding: 10px 11px;
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.danger-btn {
-  border: 1px solid #bc7a7a;
-  border-radius: 9px;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 8px 12px;
-  background: #f8e9e9;
-  color: #7a1e1e;
-}
-
-.danger-btn:hover {
-  background: #f1dede;
-}
-
-.danger-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.icon-btn {
-  min-width: 38px;
-  padding: 8px 0;
-  font-size: 16px;
 }
 
 .warnings {

@@ -3,8 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../components/PaginationControls.vue'
 import { api } from '../lib/api'
-import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
-import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
+import { useSeriesPreviewGallery } from '../composables/useSeriesPreviewGallery'
 import { seriesPath } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
 import { currentLocale, t } from '../lib/i18n'
@@ -32,11 +31,8 @@ const showAuthorSuggestions = ref(false)
 const suggestedAuthors = ref([])
 const availableTags = ref([])
 const availableAuthors = ref([])
-const previewGridWidths = ref({})
-const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const expandedSeriesTagCards = ref({})
-const previewGridElements = new Map()
 const showMobileFilters = ref(false)
 const SORT_SESSION_KEY = 'pj_public_series_list_sort'
 const MOBILE_PREVIEW_BREAKPOINT = 1100
@@ -44,15 +40,11 @@ const MOBILE_MAX_PREVIEW_TILES = 12
 const DESKTOP_MAX_PREVIEW_TILES = 12
 const MOBILE_SERIES_TAGS_COLLAPSED_COUNT = 6
 const TAG_ROWS_INITIAL = 4
-const isMobilePreviewViewport = ref(
-  typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,
-)
 const TAG_ROWS_STEP = 10
 const visibleTagRows = ref(TAG_ROWS_INITIAL)
 const tagRowsTotal = ref(0)
 const tagVisibleHeight = ref(0)
 const tagsCloudRef = ref(null)
-let previewResizeObserver = null
 let tagsLayoutObserver = null
 let authorSuggestBlurTimerId = null
 let searchDebounceTimer = null
@@ -197,11 +189,19 @@ const seriesPreviews = computed(() => {
   return map
 })
 
-function previewTiles(seriesId) {
-  const tiles = seriesPreviews.value[seriesId] || []
-  const limit = isMobilePreviewViewport.value ? MOBILE_MAX_PREVIEW_TILES : DESKTOP_MAX_PREVIEW_TILES
-  return tiles.slice(0, limit)
-}
+const {
+  isMobilePreviewViewport,
+  previewTiles,
+  previewRowsBySeries,
+  previewGridGap,
+  setPreviewGridRef,
+} = useSeriesPreviewGallery({
+  series,
+  previewMap: seriesPreviews,
+  mobileBreakpoint: MOBILE_PREVIEW_BREAKPOINT,
+  mobileMaxTiles: MOBILE_MAX_PREVIEW_TILES,
+  desktopMaxTiles: DESKTOP_MAX_PREVIEW_TILES,
+})
 
 function previewOverflowCount(item) {
   const total = Number(item?.photos_count || 0)
@@ -250,33 +250,6 @@ function toggleSeriesCardTags(seriesId) {
   }
 }
 
-function setPreviewGridRef(seriesId, element) {
-  const previous = previewGridElements.get(seriesId)
-  if (previous && previous !== element && previewResizeObserver) {
-    previewResizeObserver.unobserve(previous)
-  }
-
-  if (!element) {
-    previewGridElements.delete(seriesId)
-    delete previewGridWidths.value[seriesId]
-    return
-  }
-
-  previewGridElements.set(seriesId, element)
-  previewGridWidths.value[seriesId] = element.clientWidth || 0
-  if (previewResizeObserver) {
-    previewResizeObserver.observe(element)
-  }
-}
-
-function syncPreviewViewportMode() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  isMobilePreviewViewport.value = window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT
-}
-
 function isPreviewImageLoaded(photoId) {
   return Boolean(previewImageLoaded.value[String(photoId)])
 }
@@ -291,63 +264,6 @@ function markPreviewImageLoaded(photoId) {
     ...previewImageLoaded.value,
     [key]: true,
   }
-}
-
-const previewRowsBySeries = computed(() => {
-  const map = {}
-
-  series.value.forEach((item) => {
-    const seriesId = Number(item?.id || 0)
-    if (!seriesId) {
-      return
-    }
-
-    const photos = previewTiles(seriesId)
-    if (!photos.length) {
-      return
-    }
-
-    const width = previewGridWidths.value[seriesId] || 920
-    const minPerRow = 3
-    const maxPerRow = isMobilePreviewViewport.value ? 4 : 5
-    const minGap = isMobilePreviewViewport.value ? 4 : 6
-    const maxGap = isMobilePreviewViewport.value ? 7 : 10
-    const targetGap = isMobilePreviewViewport.value ? 6 : 8
-    const minRowHeight = isMobilePreviewViewport.value ? 92 : 86
-    const maxRowHeight = isMobilePreviewViewport.value ? 242 : 320
-    const targetTotalHeight = isMobilePreviewViewport.value
-      ? Math.max(210, Math.min(420, width * 0.7))
-      : Math.max(320, Math.min(580, width * 0.58))
-
-    map[seriesId] = buildPreviewRowsWithHeroPattern(
-      photos,
-      width,
-      previewAspectRatios.value,
-      {
-        minCount: photos.length,
-        maxCount: photos.length,
-        minPerRow,
-        maxPerRow,
-        maxRows: 3,
-        targetTotalHeight,
-        minGap,
-        maxGap,
-        minRowHeight,
-        maxRowHeight,
-        targetGap,
-        rowHeightUniformityWeight: 0.12,
-        ratioFallback: 1,
-        fallbackGap: targetGap,
-        fallbackMaxTiles: photos.length,
-      },
-    )
-  })
-
-  return map
-})
-
-function previewGridGap(seriesId) {
-  return Number(previewRowsBySeries.value?.[seriesId]?.rows?.[0]?.gap ?? 8)
 }
 
 function toggleTag(tagName) {
@@ -655,41 +571,15 @@ function applyFiltersFromQuery(query = {}) {
 }
 
 onMounted(() => {
-  previewResizeObserver = new ResizeObserver((entries) => {
-    entries.forEach((entry) => {
-      const matched = Array.from(previewGridElements.entries()).find(([, element]) => element === entry.target)
-      if (!matched) {
-        return
-      }
-
-      const [seriesId] = matched
-      const nextWidth = entry.contentRect.width
-      if (previewGridWidths.value[seriesId] !== nextWidth) {
-        previewGridWidths.value = {
-          ...previewGridWidths.value,
-          [seriesId]: nextWidth,
-        }
-      }
-    })
-  })
-
   tagsLayoutObserver = new ResizeObserver(() => {
     recalcTagRowsLayout()
   })
   if (tagsCloudRef.value) {
     tagsLayoutObserver.observe(tagsCloudRef.value)
   }
-
-  window.addEventListener('resize', syncPreviewViewportMode)
-  syncPreviewViewportMode()
 })
 
 onBeforeUnmount(() => {
-  if (previewResizeObserver) {
-    previewResizeObserver.disconnect()
-    previewResizeObserver = null
-  }
-
   if (tagsLayoutObserver) {
     tagsLayoutObserver.disconnect()
     tagsLayoutObserver = null
@@ -703,29 +593,7 @@ onBeforeUnmount(() => {
     clearTimeout(searchDebounceTimer)
     searchDebounceTimer = null
   }
-
-  window.removeEventListener('resize', syncPreviewViewportMode)
-  previewGridElements.clear()
 })
-
-watch(
-  seriesPreviews,
-  async (map) => {
-    const photos = Object.values(map).flat()
-    const ratioPatch = await resolveMissingAspectRatios(
-      photos,
-      previewAspectRatios.value,
-      (photo) => photo?.src,
-    )
-    if (Object.keys(ratioPatch).length) {
-      previewAspectRatios.value = {
-        ...previewAspectRatios.value,
-        ...ratioPatch,
-      }
-    }
-  },
-  { immediate: true },
-)
 
 watch(
   () => route.fullPath,
@@ -1330,27 +1198,6 @@ watch([availableTags, visibleTagRows], async () => {
   background: #eef3ed;
 }
 
-.chip,
-.ghost-btn {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--chip);
-  color: var(--text);
-  padding: 8px 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.chip {
-  font-size: 12px;
-}
-
-.chip.active {
-  background: #ddeee4;
-  border-color: #b9d5c4;
-  color: #335e49;
-}
-
 .reset-btn {
   margin-top: 16px;
   width: 100%;
@@ -1593,30 +1440,8 @@ watch([availableTags, visibleTagRows], async () => {
   gap: 6px;
 }
 
-.tag-chip {
-  border: 1px solid #ced8cd;
-  border-radius: 999px;
-  background: #eef3ed;
-  color: #4f6354;
-  padding: 3px 9px;
-  font-size: 12px;
-}
-
 .tag-chip--action {
   cursor: pointer;
-}
-
-.tag-chip--action.active {
-  background: #ddeee4;
-  border-color: #b9d5c4;
-  color: #335e49;
-}
-
-.tag-chip--toggle {
-  background: #e5ede6;
-  border-color: #c8d8cb;
-  color: #3e5a49;
-  font-weight: 700;
 }
 
 .error {

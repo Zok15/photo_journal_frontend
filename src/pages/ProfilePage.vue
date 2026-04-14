@@ -173,42 +173,7 @@ onMounted(() => {
   color: #4b574f;
 }
 
-.form {
-  display: grid;
-  gap: 12px;
-}
-
-.field {
-  display: grid;
-  gap: 4px;
-}
-
-.field span {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.field input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 11px;
-  border: 1px solid #cfd6ce;
-  border-radius: 8px;
-  background: #fff;
-}
-
 .hint {
-  margin: 0;
-}
-
-.actions-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.success {
-  color: #2f7a43;
   margin: 0;
 }
 

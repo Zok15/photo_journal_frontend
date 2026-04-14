@@ -4,9 +4,9 @@ import { RouterLink } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 import PaginationControls from '../components/PaginationControls.vue'
 import { api } from '../lib/api'
+import { useSeriesDownload } from '../composables/useSeriesDownload'
+import { useSeriesPreviewGallery } from '../composables/useSeriesPreviewGallery'
 import { formatValidationErrorMessage } from '../lib/formErrors'
-import { resolveMissingAspectRatios } from '../lib/imageAspectRatio'
-import { buildPreviewRowsWithHeroPattern } from '../lib/previewRows'
 import { getUser, setCurrentUser } from '../lib/session'
 import { seriesPath, seriesSlugOrId } from '../lib/seriesPath'
 import { buildStorageUrl, withCacheBust } from '../lib/url'
@@ -24,13 +24,9 @@ const currentUser = ref(getUser())
 const journalTitleReady = ref(false)
 const calendarMarkedDateKeys = ref([])
 const fetchedTags = ref([])
-const previewGridWidths = ref({})
-const previewAspectRatios = ref({})
 const previewImageLoaded = ref({})
 const previewUrlVersion = ref(0)
 const expandedSeriesTagCards = ref({})
-const previewGridElements = new Map()
-let previewResizeObserver = null
 let searchDebounceTimer = null
 let loadSeriesRequestId = 0
 let refreshPreviewUrlsInFlight = false
@@ -52,6 +48,11 @@ const TAG_ROWS_INITIAL = 4
 
 const route = useRoute()
 const router = useRouter()
+const {
+  downloadProgressText,
+  downloadSeries,
+  isSeriesDownloading,
+} = useSeriesDownload({ t })
 
 const search = ref('')
 const searchInput = ref('')
@@ -98,9 +99,6 @@ const tagsCloudRef = ref(null)
 const tagSearchInputRef = ref(null)
 const showTagSearch = ref(false)
 const tagSearchQuery = ref('')
-const isMobilePreviewViewport = ref(
-  typeof window !== 'undefined' ? window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT : false,
-)
 let tagsLayoutObserver = null
 
 const journalTitle = computed(() => {
@@ -168,6 +166,20 @@ const tagCloudStyle = computed(() => {
     maxHeight: `${tagVisibleHeight.value}px`,
     '--tags-visible-height': `${tagVisibleHeight.value}px`,
   }
+})
+
+const {
+  isMobilePreviewViewport,
+  previewTiles,
+  previewRowsBySeries,
+  previewGridGap,
+  setPreviewGridRef,
+} = useSeriesPreviewGallery({
+  series,
+  previewMap: seriesPreviews,
+  mobileBreakpoint: MOBILE_PREVIEW_BREAKPOINT,
+  mobileMaxTiles: MOBILE_MAX_PREVIEW_TILES,
+  desktopMaxTiles: DESKTOP_MAX_PREVIEW_TILES,
 })
 
 function isValidSort(value) {
@@ -530,6 +542,24 @@ function visibilityClass(item) {
   return 'series-visibility--private'
 }
 
+async function downloadWholeSeries(item) {
+  const seriesKey = seriesSlugOrId(item)
+  if (!seriesKey) {
+    return
+  }
+
+  error.value = ''
+
+  try {
+    await downloadSeries({
+      seriesKey,
+      fallbackMessage: t('Не удалось скачать серию целиком.'),
+    })
+  } catch (e) {
+    error.value = e?.message || t('Не удалось скачать серию целиком.')
+  }
+}
+
 function photoUrl(path) {
   return buildStorageUrl(path)
 }
@@ -541,12 +571,6 @@ function publicPhotoUrl(photo) {
   }
 
   return photoUrl(photo?.path)
-}
-
-function previewTiles(seriesId) {
-  const tiles = seriesPreviews.value[seriesId] || []
-  const limit = isMobilePreviewViewport.value ? MOBILE_MAX_PREVIEW_TILES : DESKTOP_MAX_PREVIEW_TILES
-  return tiles.slice(0, limit)
 }
 
 function previewOverflowCount(item) {
@@ -617,93 +641,6 @@ function extractSeriesDateKeys(items) {
   })
 
   return keys
-}
-
-function setPreviewGridRef(seriesId, element) {
-  const previous = previewGridElements.get(seriesId)
-  if (previous && previous !== element && previewResizeObserver) {
-    previewResizeObserver.unobserve(previous)
-  }
-
-  if (!element) {
-    previewGridElements.delete(seriesId)
-    delete previewGridWidths.value[seriesId]
-    return
-  }
-
-  previewGridElements.set(seriesId, element)
-  const nextWidth = element.clientWidth || 0
-  if (previewGridWidths.value[seriesId] !== nextWidth) {
-    previewGridWidths.value[seriesId] = nextWidth
-  }
-  if (previewResizeObserver) {
-    previewResizeObserver.observe(element)
-  }
-}
-
-function syncPreviewViewportMode() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  isMobilePreviewViewport.value = window.innerWidth <= MOBILE_PREVIEW_BREAKPOINT
-}
-
-const previewRowsBySeries = computed(() => {
-  const map = {}
-
-  series.value.forEach((item) => {
-    const seriesId = Number(item?.id || 0)
-    if (!seriesId) {
-      return
-    }
-
-    const photos = previewTiles(seriesId)
-    if (!photos.length) {
-      return
-    }
-
-    const width = previewGridWidths.value[seriesId] || 920
-    const minPerRow = 3
-    const maxPerRow = isMobilePreviewViewport.value ? 4 : 5
-    const minGap = isMobilePreviewViewport.value ? 4 : 6
-    const maxGap = isMobilePreviewViewport.value ? 7 : 10
-    const targetGap = isMobilePreviewViewport.value ? 6 : 8
-    const minRowHeight = isMobilePreviewViewport.value ? 92 : 86
-    const maxRowHeight = isMobilePreviewViewport.value ? 242 : 320
-    const targetTotalHeight = isMobilePreviewViewport.value
-      ? Math.max(210, Math.min(420, width * 0.7))
-      : Math.max(320, Math.min(580, width * 0.58))
-
-    map[seriesId] = buildPreviewRowsWithHeroPattern(
-      photos,
-      width,
-      previewAspectRatios.value,
-      {
-        minCount: photos.length,
-        maxCount: photos.length,
-        minPerRow,
-        maxPerRow,
-        maxRows: 3,
-        targetTotalHeight,
-        minGap,
-        maxGap,
-        minRowHeight,
-        maxRowHeight,
-        targetGap,
-        rowHeightUniformityWeight: 0.12,
-        ratioFallback: 1,
-        fallbackGap: targetGap,
-        fallbackMaxTiles: photos.length,
-      },
-    )
-  })
-
-  return map
-})
-
-function previewGridGap(seriesId) {
-  return Number(previewRowsBySeries.value?.[seriesId]?.rows?.[0]?.gap ?? 8)
 }
 
 function toggleTag(tag) {
@@ -967,18 +904,6 @@ async function loadSeriesPreviews(items) {
 
   seriesPreviews.value = Object.fromEntries(entries)
   previewImageLoaded.value = {}
-  const photos = Object.values(seriesPreviews.value).flat()
-  const ratioPatch = await resolveMissingAspectRatios(
-    photos,
-    previewAspectRatios.value,
-    (photo) => photo?.src,
-  )
-  if (Object.keys(ratioPatch).length) {
-    previewAspectRatios.value = {
-      ...previewAspectRatios.value,
-      ...ratioPatch,
-    }
-  }
 }
 
 function buildSeriesPreviewSignature(items) {
@@ -1291,21 +1216,6 @@ async function loadAvailableTags() {
 }
 
 onMounted(() => {
-  previewResizeObserver = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      const matched = Array.from(previewGridElements.entries()).find(([, element]) => element === entry.target)
-      if (!matched) {
-        continue
-      }
-
-      const [seriesId] = matched
-      previewGridWidths.value = {
-        ...previewGridWidths.value,
-        [seriesId]: entry.contentRect.width,
-      }
-    }
-  })
-
   tagsLayoutObserver = new ResizeObserver(() => {
     recalcTagRowsLayout()
   })
@@ -1315,8 +1225,6 @@ onMounted(() => {
 
   window.addEventListener('pointerdown', onGlobalPointerDown)
   window.addEventListener('keydown', onGlobalKeyDown)
-  window.addEventListener('resize', syncPreviewViewportMode)
-  syncPreviewViewportMode()
 
   applyRouteQuery(route.query)
   loadSeries(page.value || 1)
@@ -1325,11 +1233,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (previewResizeObserver) {
-    previewResizeObserver.disconnect()
-    previewResizeObserver = null
-  }
-  previewGridElements.clear()
   if (searchDebounceTimer !== null) {
     clearTimeout(searchDebounceTimer)
     searchDebounceTimer = null
@@ -1343,7 +1246,6 @@ onBeforeUnmount(() => {
 
   window.removeEventListener('pointerdown', onGlobalPointerDown)
   window.removeEventListener('keydown', onGlobalKeyDown)
-  window.removeEventListener('resize', syncPreviewViewportMode)
 })
 
 watch(() => route.query, (query) => {
@@ -1705,12 +1607,28 @@ function toggleMobileFilters() {
           <div v-else class="series-grid">
             <article v-for="item in series" :key="item.id" class="series-card">
               <header class="series-card-header">
-                <h3>
-                  <RouterLink class="series-title-link" :to="seriesPath(item)">
-                    {{ item.title }}
-                  </RouterLink>
-                </h3>
-                <RouterLink class="view-link" :to="seriesPath(item)">{{ t('Открыть') }}</RouterLink>
+                <div class="series-card-heading">
+                  <h3>
+                    <RouterLink class="series-title-link" :to="seriesPath(item)">
+                      {{ item.title }}
+                    </RouterLink>
+                  </h3>
+                  <div class="series-card-actions">
+                    <button
+                      type="button"
+                      class="ghost-btn"
+                      :disabled="isSeriesDownloading(seriesSlugOrId(item))"
+                      @click="downloadWholeSeries(item)"
+                    >
+                      {{
+                        isSeriesDownloading(seriesSlugOrId(item))
+                          ? (downloadProgressText(seriesSlugOrId(item)) || t('Скачиваем...'))
+                          : t('Скачать серию')
+                      }}
+                    </button>
+                    <RouterLink class="view-link" :to="seriesPath(item)">{{ t('Открыть') }}</RouterLink>
+                  </div>
+                </div>
               </header>
 
               <div class="series-meta">
@@ -2318,7 +2236,6 @@ function toggleMobileFilters() {
 }
 
 .chip,
-.tag-chip,
 .sort-box {
   border: 0;
   border-radius: 8px;
@@ -2332,24 +2249,9 @@ function toggleMobileFilters() {
   cursor: pointer;
 }
 
-.tag-chip {
-  cursor: pointer;
-}
-
 .chip.active {
   background: var(--accent-soft);
   color: #3f6d56;
-}
-
-.tag-chip.active {
-  background: var(--accent-soft);
-  color: #3f6d56;
-}
-
-.tag-chip--toggle {
-  background: #e5ede6;
-  color: #3e5a49;
-  font-weight: 700;
 }
 
 .content-panel {
@@ -2373,17 +2275,6 @@ function toggleMobileFilters() {
 .form {
   display: grid;
   gap: 10px;
-}
-
-.form input,
-.form textarea {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 4px;
-  padding: 10px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
 }
 
 .checkbox-field {
@@ -2468,10 +2359,22 @@ function toggleMobileFilters() {
 }
 
 .series-card-header {
+  display: block;
+}
+
+.series-card-heading {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+}
+
+.series-card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
 }
 
 .series-card h3 {
@@ -2675,12 +2578,6 @@ function toggleMobileFilters() {
   color: #87520b;
 }
 
-.ghost-btn {
-  border: 0;
-  background: var(--chip);
-  color: var(--text);
-}
-
 @media (max-width: 1100px) {
   .journal-body {
     grid-template-columns: 1fr;
@@ -2747,6 +2644,16 @@ function toggleMobileFilters() {
 
   .series-card h3 {
     font-size: 30px;
+  }
+
+  .series-card-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .series-card-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .tags-search-input {
